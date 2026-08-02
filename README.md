@@ -58,15 +58,31 @@ This project is ideal for:
 
 ## Project Structure
 
+The codebase follows **Hexagonal Architecture (Ports and Adapters)**: business rules live in `domain/`, orchestration lives in `application/`, and every concrete technology (database, HTTP, UI, third-party APIs) lives in `infrastructure/`. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full dependency rule, ports vs. adapters, and how SOLID is enforced.
+
 ```
-/wms-project
-│── index.html
-│── /css
-│    └── styles.css
-│── /js
-│    └── app.js
-│── /assets
-│    └── images, icons
+/
+│── domain/            pure business logic, per bounded context
+│    ├── inventory/    (worked example: entities, value-objects, services, events)
+│    ├── orders/
+│    ├── shipments/
+│    ├── routing/
+│    ├── fleet/
+│    ├── analytics/
+│    ├── notifications/
+│    ├── voice-ai/
+│    └── auth/
+│── application/        use cases, orchestrators, ports (interfaces)
+│    ├── use-cases/
+│    ├── ports/
+│    └── orchestrators/
+│── infrastructure/      adapters
+│    ├── database/
+│    ├── http/
+│    ├── ui/            index.html / css / js (browser frontend)
+│    └── third-party/    e.g. ElevenLabs
+│── tools/eslint-rules/  custom rule enforcing the dependency rule
+│── ARCHITECTURE.md
 │── README.md
 ```
 ## Getting Started
