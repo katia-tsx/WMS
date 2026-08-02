@@ -24,6 +24,19 @@ The system focuses on simplicity, usability, and extensibility, making it suitab
 * Modular and scalable frontend architecture
 * Clean and responsive UI/UX
 
+## Módulos Principales
+
+* **Auth & Users** – Autenticación y gestión de usuarios
+* **Dashboard & Analytics** – Panel de control e indicadores operativos
+* **Inventory Management** – Gestión de inventario
+* **Warehouse Operations** – Operaciones de almacén
+* **Orders & Shipments** – Gestión de pedidos y envíos
+* **Routing & VRP Engine** – Motor de ruteo y problema de ruteo de vehículos (VRP)
+* **Fleet Management** – Gestión de flota
+* **Notifications & Alerts** – Notificaciones y alertas
+* **Voice AI (ElevenLabs)** – Interacción por voz impulsada por IA
+* **Settings & Configuration** – Configuración y ajustes del sistema
+
 ## Tech Stack
 
 * **HTML5** – Structure
