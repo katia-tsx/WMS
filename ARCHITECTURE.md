@@ -36,6 +36,21 @@ Every context exposes the same four kinds of building block:
 
 See [`domain/inventory`](domain/inventory) for a fully worked example; the other eight contexts are scaffolded with the same four subfolders, ready to be filled in the same way.
 
+#### `domain/shared-kernel/`
+
+Not a bounded context but the DDD **Shared Kernel**: the cross-cutting primitives every other context is built from, so identity comparison, immutability, and error handling aren't reinvented per context.
+
+| Primitive | Purpose |
+|---|---|
+| `Entity` / `AggregateRoot` | Base classes for objects with identity; `AggregateRoot` adds a domain-event buffer (`addDomainEvent` / `pullDomainEvents`). |
+| `ValueObject` | Base class for objects defined only by their value; enforces immutability via `Object.freeze`. |
+| `DomainEvent` | Base class for "something happened" records, stamped with `eventId` and `occurredAt`. |
+| `Result` / `Ok` / `Err` | An Either-style type (`map`, `flatMap`, `match`) so expected business failures are returned, not thrown. |
+| `Guard` | Static invariant assertions (`againstNullOrUndefined`, `againstEmptyString`, `inRange`, `isPositiveNumber`) used in entity/value-object constructors. |
+| `DomainError` hierarchy | `ValidationError`, `NotFoundError`, `ConflictError`, `BusinessRuleViolationError` — each carries a machine-readable `code` and human-readable `message`. |
+
+Every domain object added to this repo, in any bounded context, should extend `Entity`, `AggregateRoot`, or `ValueObject` and use `Guard` for its invariants. See [`domain/shared-kernel`](domain/shared-kernel) and its unit tests (`npm test`).
+
 ### application/
 
 The middle layer. It knows the domain exists and orchestrates it, but still knows nothing about *how* the outside world is implemented.

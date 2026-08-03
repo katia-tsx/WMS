@@ -4,7 +4,8 @@
   "private": true,
   "description": "AI-powered Warehouse Management System, scaffolded with Hexagonal Architecture (Ports and Adapters).",
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node --test"
   },
   "devDependencies": {
     "eslint": "^9.9.0"
