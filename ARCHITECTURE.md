@@ -72,7 +72,7 @@ The outermost layer, where every concrete technology choice lives.
 | `ui/` | The browser-facing frontend (the `index.html` / `css/` / `js/` described in the root README). |
 | `third-party/` | Adapters for external APIs (e.g. `elevenLabsVoiceGateway` implementing `VoiceGatewayPort`). |
 
-`infrastructure/composition-root.js` is the one file allowed to import both `application/` and concrete `infrastructure/` adapters and wire them together (see §4).
+`infrastructure/di/CompositionRoot.js` is the one file allowed to import both `application/` and concrete `infrastructure/` adapters and wire them together (see §4).
 
 ## 2. The Dependency Rule
 
@@ -96,7 +96,9 @@ The payoff: infrastructure is the layer most likely to change (swap Postgres for
 ## 3. Port vs. Adapter
 
 * **Port** — an interface, owned by `application/`, that describes a capability the application layer needs from the outside world, expressed purely in terms the application layer cares about. Example: [`InventoryRepositoryPort`](application/ports/InventoryRepositoryPort.js) says "you can find a product by sku, save a product, and list all products" — it says nothing about SQL, connection pools, or JSON.
-* **Adapter** — a concrete implementation of a port, owned by `infrastructure/`, that does the actual technical work. Example: [`InMemoryInventoryRepository`](infrastructure/database/InMemoryInventoryRepository.js) implements `InventoryRepositoryPort` with a `Map`; a future `PostgresInventoryRepository` would implement the exact same port with SQL queries, and `AdjustStockUseCase` would not need to change a single line.
+* **Adapter** — a concrete implementation of a port, owned by `infrastructure/`, that does the actual technical work. Example: [`InMemoryInventoryRepository`](infrastructure/database/InMemoryInventoryRepository.js) implements `InventoryRepositoryPort` with a `Map`; [`PostgresInventoryRepository`](infrastructure/database/PostgresInventoryRepository.js) implements the exact same port and is wired in for production (its query methods are still stubs pending a real driver, but `AdjustStockUseCase` would not need to change a single line once they're filled in).
+
+The cross-cutting ports in [`application/ports`](application/ports) — `IRepository`, `ISpecification`, `IUnitOfWork`, `IEventPublisher`, `IClock`, `ILogger`, `INotificationGateway`, `IVoiceSynthesisGateway`, `IRoutingEngine` — go one step further than a `@typedef` shape: each is a class extending [`Port`](application/ports/Port.js) whose methods throw `NotImplementedError` unless a concrete adapter overrides them. A use case depends on the port, injected via its constructor, and is unit-tested by injecting an in-memory fake that extends the same port — never the real adapter. See [`application/ports/README.md`](application/ports/README.md) for the full convention.
 
 Two kinds of adapters exist, both shown in this scaffold:
 
@@ -105,7 +107,15 @@ Two kinds of adapters exist, both shown in this scaffold:
 
 ## 4. The composition root
 
-Something, somewhere, has to know that `AdjustStockUseCase` should be constructed with an `InMemoryInventoryRepository` rather than a `PostgresInventoryRepository`. That "something" is the **composition root**: [`infrastructure/composition-root.js`](infrastructure/composition-root.js). It is the single place allowed to `require()` both a use case and a concrete adapter and hand one to the other's constructor. Every other file in `application/` only ever sees the port's interface, never the adapter's implementation — this is what makes Dependency Inversion (§6) more than a diagram.
+Something, somewhere, has to know that `AdjustStockUseCase` should be constructed with an `InMemoryInventoryRepository` rather than a `PostgresInventoryRepository`. That "something" is the **composition root**: [`infrastructure/di/CompositionRoot.js`](infrastructure/di/CompositionRoot.js). It is the single place allowed to `require()` both a use case and a concrete adapter and hand one to the other's constructor. Every other file in `application/` only ever sees the port's interface, never the adapter's implementation — this is what makes Dependency Inversion (§6) more than a diagram.
+
+Bindings are registered by name against a small, framework-free [`Container`](infrastructure/di/Container.js) (`container.register('inventoryRepository', factory, { lifetime: 'singleton' })`) instead of being constructed inline, for three reasons:
+
+* **Lifetimes.** A binding registered `singleton` is built once and reused; `transient` (the default) rebuilds on every `resolve()`. Repositories, publishers, and use cases are registered `singleton` so the whole graph shares one instance per process.
+* **Constructor injection via factories.** A factory receives the container itself (`(c) => new AdjustStockUseCase({ inventoryRepository: c.resolve('inventoryRepository'), ... })`), so a dependency is requested by name rather than `require()`d directly — the only thing that changes to swap an adapter is which factory is registered under that name.
+* **Circular dependency detection.** `Container` tracks which names are mid-resolution; if resolving `a` requires resolving `a` again before it finishes, it throws a `CircularDependencyError` naming the full cycle (e.g. `a -> b -> a`) instead of overflowing the stack.
+
+`CompositionRoot.js` picks which adapter to register per port based on a `mode` — `RUNTIME_MODE`, falling back to `NODE_ENV`, read via [`infrastructure/config/env.js`](infrastructure/config/env.js) (which also loads a `.env` file into `process.env` if one exists, without a real environment variable ever being overridden by it). `mode === 'production'` wires `PostgresInventoryRepository` and `ConsoleEventPublisher`; anything else wires `InMemoryInventoryRepository`, and `mode === 'test'` additionally swaps in `InMemoryEventPublisher` so a test can assert on which events were published instead of reading console output.
 
 ## 5. SOLID, enforced through JSDoc-typed interfaces
 
@@ -141,6 +151,6 @@ npm run lint
 
 ## 7. Adding a new bounded context or a new adapter
 
-* **New use case in an existing context**: add a class under `application/use-cases/<context>/`, taking whatever ports it needs as constructor arguments; wire it in `infrastructure/composition-root.js`.
-* **New adapter for an existing port** (e.g. moving from `InMemoryInventoryRepository` to Postgres): add the new class under `infrastructure/database/` implementing the same port, and change one line in the composition root. Nothing in `application/` or `domain/` changes.
+* **New use case in an existing context**: add a class under `application/use-cases/<context>/`, taking whatever ports it needs as constructor arguments; register it (and its dependencies) in `infrastructure/di/CompositionRoot.js`.
+* **New adapter for an existing port** (e.g. moving from `InMemoryInventoryRepository` to Postgres): add the new class under `infrastructure/database/` implementing the same port, and change one `container.register(...)` call in the composition root. Nothing in `application/` or `domain/` changes.
 * **New bounded context**: create `domain/<context>/{entities,value-objects,services,events}/`, following [`domain/inventory`](domain/inventory) as the template, then add its use cases and ports the same way inventory's were added.
