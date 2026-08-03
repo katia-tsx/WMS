@@ -1,0 +1,167 @@
+name: wms
+
+# Local development environment: PostgreSQL 16 (with PostGIS, for Routing's
+# future coordinate storage) plus a lean self-hosted Supabase stack
+# (Studio, Auth, Realtime, PostgREST, Storage). See docs/database-setup.md
+# for setup instructions, a DBeaver connection profile, and known
+# limitations of this local-only setup versus a full Supabase deployment.
+#
+# Everything below reads its secrets/ports from .env (copy .env.example to
+# .env first — see the root README/docs/database-setup.md).
+
+services:
+  db:
+    # postgis/postgis ships PostgreSQL 16 with the PostGIS extension
+    # already compiled in — plain postgres:16 does not include PostGIS,
+    # and infra/postgres/init/01-extensions.sql enables it.
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-wms}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      # Read by infra/postgres/init/03-roles.sh on first boot only.
+      WMS_APP_PASSWORD: ${WMS_APP_PASSWORD:?WMS_APP_PASSWORD is required}
+      WMS_READONLY_PASSWORD: ${WMS_READONLY_PASSWORD:?WMS_READONLY_PASSWORD is required}
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-wms}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # supabase/postgres-meta: not one of the five services this environment
+  # was asked to provision, but Studio's Table Editor/schema browser calls
+  # it directly and is unusable without it — see docs/database-setup.md
+  # "Known limitations".
+  meta:
+    image: supabase/postgres-meta:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${POSTGRES_DB:-wms}
+      PG_META_DB_USER: ${POSTGRES_USER:-postgres}
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+
+  studio:
+    image: supabase/studio:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      meta:
+        condition: service_started
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DEFAULT_ORGANIZATION_NAME: WMS
+      DEFAULT_PROJECT_NAME: wms-local
+      SUPABASE_URL: http://rest:3000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_URL:-http://localhost:3001}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY is required}
+    ports:
+      - '${STUDIO_PORT:-54323}:3000'
+
+  auth:
+    image: supabase/gotrue:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${GOTRUE_EXTERNAL_URL:-http://localhost:9999}
+      GOTRUE_SITE_URL: ${GOTRUE_SITE_URL:-http://localhost:3000}
+      GOTRUE_DB_DRIVER: postgres
+      # Auth owns its own `auth` schema/roles in a full Supabase deployment
+      # (created by supabase/postgres's bootstrap scripts). This local
+      # setup connects as the postgres superuser instead — see
+      # docs/database-setup.md "Known limitations".
+      GOTRUE_DB_DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wms}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: 'false'
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: 'true'
+      GOTRUE_MAILER_AUTOCONFIRM: 'true'
+    ports:
+      - '${AUTH_PORT:-9999}:9999'
+
+  rest:
+    image: postgrest/postgrest:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wms}
+      PGRST_DB_SCHEMAS: wms,public
+      PGRST_DB_ANON_ROLE: ${POSTGRES_USER:-postgres}
+      PGRST_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      PGRST_DB_USE_LEGACY_GUCS: 'false'
+    ports:
+      - '${REST_PORT:-3001}:3000'
+
+  realtime:
+    image: supabase/realtime:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DB_NAME: ${POSTGRES_DB:-wms}
+      DB_SSL: 'false'
+      API_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      SECRET_KEY_BASE: ${REALTIME_SECRET_KEY_BASE:?REALTIME_SECRET_KEY_BASE is required}
+      ERL_AFLAGS: '-proto_dist inet_tcp'
+      ENABLE_TAILSCALE: 'false'
+      DNS_NODES: "''"
+    ports:
+      - '${REALTIME_PORT:-4000}:4000'
+
+  storage:
+    image: supabase/storage-api:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      rest:
+        condition: service_started
+    environment:
+      ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required}
+      SERVICE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY is required}
+      PGRST_JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-wms}
+      POSTGREST_URL: http://rest:3000
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      FILE_SIZE_LIMIT: '52428800'
+      TENANT_ID: wms-local
+      REGION: local
+      GLOBAL_S3_BUCKET: local
+    volumes:
+      - storage-data:/var/lib/storage
+    ports:
+      - '${STORAGE_PORT:-5000}:5000'
+
+volumes:
+  pgdata:
+  storage-data:
