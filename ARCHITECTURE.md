@@ -68,7 +68,7 @@ The outermost layer, where every concrete technology choice lives.
 | Folder | Contains |
 |---|---|
 | `database/` | Adapters implementing repository ports (e.g. `InMemoryInventoryRepository` implementing `InventoryRepositoryPort`). |
-| `http/` | Driving adapters that translate HTTP requests into use-case calls and use-case results back into HTTP responses (e.g. `inventoryController`). |
+| `adapters/http/` | The dependency-light HTTP layer: `Router` (path params, middleware chains), driving-adapter controllers per module (e.g. `InventoryController`) that translate requests into use-case input and map `Result` back to HTTP via `ResultToHttpMapper`, and an OpenAPI 3.0 document generated from route metadata. See its own [README](infrastructure/adapters/http/README.md). |
 | `ui/` | The browser-facing frontend (the `index.html` / `css/` / `js/` described in the root README). |
 | `third-party/` | Adapters for external APIs (e.g. `elevenLabsVoiceGateway` implementing `VoiceGatewayPort`). |
 
@@ -183,7 +183,7 @@ new UseCasePipelineBuilder(adjustStockUseCase)
 
 ### Controllers only ever call the pipeline
 
-`infrastructure/di/CompositionRoot.js` builds this pipeline once per use case and hands the *pipeline*, not the bare use case, to whatever driving adapter needs it — `inventoryController` is constructed from `adjustStockUseCasePipeline`, never from `adjustStockUseCase` directly. This is a hard rule across all nine modules of the system: **a controller or UI adapter never calls a domain entity directly, and never calls a bare use case** — it only ever calls `execute(input)` on whatever the pipeline builder produced. That is what guarantees every request gets the same auditing, permission checks, and error normalization (see `infrastructure/http/inventoryController.js`'s `statusForError`, which maps `DomainError` subclasses to HTTP status codes) regardless of which controller or bounded context invoked it.
+`infrastructure/di/CompositionRoot.js` builds this pipeline once per use case and hands the *pipeline*, not the bare use case, to whatever driving adapter needs it — `inventoryController` is constructed from `adjustStockUseCasePipeline`, never from `adjustStockUseCase` directly. This is a hard rule across all nine modules of the system: **a controller or UI adapter never calls a domain entity directly, and never calls a bare use case** — it only ever calls `execute(input)` on whatever the pipeline builder produced. That is what guarantees every request gets the same auditing, permission checks, and error normalization (see `infrastructure/adapters/http/ResultToHttpMapper.js`'s `statusForError`, which maps `DomainError` subclasses to HTTP status codes and every controller uses — see §10) regardless of which controller or bounded context invoked it.
 
 The one exception is a use case composed inside an `ApplicationService` workflow (like `AdjustStockUseCase` inside `OrderFulfillmentOrchestrator`): it is injected *undecorated*, because the workflow's own shared transaction already covers it — wrapping it in its own `TransactionalUseCaseDecorator` too would open a nested transaction the simple `IUnitOfWork` here doesn't support. `CompositionRoot.js` registers both bindings (`adjustStockUseCase` and `adjustStockUseCasePipeline`) side by side, one per consumer, and documents why.
 
@@ -224,3 +224,14 @@ A subscriber that throws is retried with exponential backoff up to `maxRetries` 
 | `RouteOptimizedEvent` | Routing | not yet — `domain/routing` has no entities yet |
 
 The last three exist so a subscriber can be written and tested against their shape today, ahead of the use case that will eventually raise them — the same "define the port/event before the adapter" ordering §3 and §7 already establish for ports and use cases.
+
+## 10. The HTTP layer
+
+[`infrastructure/adapters/http/`](infrastructure/adapters/http) is a minimal, dependency-free HTTP layer — Node's built-in `http` module plus a hand-rolled `Router` and Connect-style `(req, res, next)` middleware convention, the same "build the mechanism, don't import a framework" choice already made for the DI container (§4) and the event bus (§9). Full detail, including why Express wasn't needed, lives in [its own README](infrastructure/adapters/http/README.md); the parts that matter architecturally:
+
+* **Controllers stay framework-agnostic.** A route handler is `(req) => controller.method(req)`, and a controller returns a plain `{ status, body }` descriptor — it never touches `res`. Only `Router#handle` (and, over a real socket, `createHttpServer.js`) writes a response. This is the same shape `infrastructure/http/inventoryController.js` used before this router existed to call it, carried forward rather than redesigned.
+* **`ResultToHttpMapper.js` centralizes error → status mapping**, so every controller normalizes a `Result.err` the same way (400/403/404/409/422, falling back to 500 for anything that isn't a recognized `DomainError`) instead of each guessing independently — the same "error normalization" cross-cutting concern §7 already established, now with one implementation instead of one per controller.
+* **Validation happens before the application layer ever sees a request.** `validateBody(schema)` middleware — built on a small, deliberately partial `JsonSchemaValidator` (see the README for exactly what subset it supports) — runs ahead of the route handler; a malformed body never reaches a use case's own `handle`.
+* **Errors are RFC 7807 Problem Details**, with `type: 'about:blank'` (the spec's own sanctioned default) rather than a fabricated documentation URL, and a redacted `detail` for anything that maps to 500 — an unexpected error's real message might contain internal detail a client has no business seeing.
+* **OpenAPI is generated, not hand-written.** `GET /openapi.json` builds a live OpenAPI 3.0 document from the `meta` attached to each route in `routes.js`, so the spec can't drift from what's actually registered.
+* **Only `InventoryController` and `OrderController` exist**, because only Inventory and order fulfillment have real use cases behind them — see the README for the checklist to add a new module's controller once its use case exists, rather than this section listing endpoints nothing backs yet.

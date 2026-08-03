@@ -6,6 +6,7 @@
   "scripts": {
     "lint": "eslint .",
     "test": "node --test",
+    "serve": "node infrastructure/adapters/http/main.js",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d",

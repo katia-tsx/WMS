@@ -17,7 +17,10 @@ const { InMemoryEventPublisher } = require('../events/InMemoryEventPublisher');
 const { EventBus } = require('../events/EventBus');
 const { ConsoleLogger } = require('../logging/ConsoleLogger');
 const { InMemoryLogger } = require('../logging/InMemoryLogger');
-const { createInventoryController } = require('../http/inventoryController');
+const { createInventoryController } = require('../adapters/http/controllers/InventoryController');
+const { createOrderController } = require('../adapters/http/controllers/OrderController');
+const { createApiRouter } = require('../adapters/http/routes');
+const { createHttpServer } = require('../adapters/http/createHttpServer');
 
 /**
  * CompositionRoot is the one file in the whole system allowed to import
@@ -160,9 +163,27 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
 
   container.register(
     'inventoryController',
-    (c) => createInventoryController(c.resolve('adjustStockUseCasePipeline')),
+    (c) => createInventoryController({ adjustStockUseCasePipeline: c.resolve('adjustStockUseCasePipeline') }),
     { lifetime: 'singleton' },
   );
+
+  container.register(
+    'orderController',
+    (c) => createOrderController({ orderFulfillmentOrchestrator: c.resolve('orderFulfillmentOrchestrator') }),
+    { lifetime: 'singleton' },
+  );
+
+  container.register(
+    'router',
+    (c) =>
+      createApiRouter({
+        inventoryController: c.resolve('inventoryController'),
+        orderController: c.resolve('orderController'),
+      }),
+    { lifetime: 'singleton' },
+  );
+
+  container.register('httpServer', (c) => createHttpServer(c.resolve('router')), { lifetime: 'singleton' });
 
   return container;
 }
@@ -183,6 +204,9 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
  *   adjustStockUseCasePipeline: *,
  *   orderFulfillmentOrchestrator: OrderFulfillmentOrchestrator,
  *   inventoryController: *,
+ *   orderController: *,
+ *   router: import('../adapters/http/Router').Router,
+ *   httpServer: import('node:http').Server,
  * }}
  */
 function buildApp(options) {
@@ -197,6 +221,9 @@ function buildApp(options) {
     adjustStockUseCasePipeline: container.resolve('adjustStockUseCasePipeline'),
     orderFulfillmentOrchestrator: container.resolve('orderFulfillmentOrchestrator'),
     inventoryController: container.resolve('inventoryController'),
+    orderController: container.resolve('orderController'),
+    router: container.resolve('router'),
+    httpServer: container.resolve('httpServer'),
   };
 }
 
