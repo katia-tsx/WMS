@@ -9,7 +9,10 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "docker compose down -v && docker compose up -d",
-    "db:logs": "docker compose logs -f"
+    "db:logs": "docker compose logs -f",
+    "db:migrate": "bash infra/migrations/migrate.sh up",
+    "db:migrate:down": "bash infra/migrations/migrate.sh down",
+    "db:migrate:status": "bash infra/migrations/migrate.sh status"
   },
   "devDependencies": {
     "eslint": "^9.9.0"

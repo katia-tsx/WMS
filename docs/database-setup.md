@@ -20,10 +20,11 @@ cp .env.example .env
 # WMS_APP_PASSWORD, and WMS_READONLY_PASSWORD. Defaults are fine for a
 # throwaway local database; see the comments in .env.example.
 
-npm run db:up      # or: make db-up
-npm run db:logs     # or: make db-logs   (Ctrl+C to stop following)
-npm run db:down     # or: make db-down   (stops containers, keeps data)
-npm run db:reset    # or: make db-reset  (wipes volumes, re-runs infra/postgres/init/ from scratch)
+npm run db:up       # or: make db-up
+npm run db:migrate  # or: make db-migrate   (creates every table — see "Schema & migrations" below)
+npm run db:logs     # or: make db-logs      (Ctrl+C to stop following)
+npm run db:down     # or: make db-down      (stops containers, keeps data)
+npm run db:reset    # or: make db-reset     (wipes volumes, re-runs infra/postgres/init/ from scratch — re-run db:migrate after)
 ```
 
 `db:up`/`db-up` returns as soon as containers are *started*, not
@@ -37,7 +38,7 @@ everything reports `healthy`/`running`.
 
 | Service | Container | Host port | Purpose |
 |---|---|---|---|
-| PostgreSQL 16 + PostGIS | `db` | `5432` | Primary datastore. `wms` database, `wms` schema (see [`infra/postgres/init/`](../infra/postgres/init)). |
+| PostgreSQL 16 + PostGIS | `db` | `5432` | Primary datastore. `wms` database and `wms` schema come from [`infra/postgres/init/`](../infra/postgres/init); its tables come from [`infra/migrations/`](../infra/migrations) (`npm run db:migrate`) — see "Schema & migrations" below. |
 | Supabase Studio | `studio` | `54323` | Web UI: table editor, SQL editor, auth users. |
 | Postgres Meta | `meta` | *(internal only)* | Backs Studio's table editor/schema browser — not one of the five services this environment was asked to provide, but Studio calls it directly and is unusable without it. |
 | Auth (GoTrue) | `auth` | `9999` | Email/password + OAuth user management, JWT issuance. |
@@ -77,6 +78,24 @@ normal restart; use `npm run db:reset` to force it.
 | `01-extensions.sql` | Enables `uuid-ossp`, `pgcrypto`, and `postgis` (PostGIS ships built into the `postgis/postgis` image this compose file uses instead of plain `postgres:16`). |
 | `02-schema.sql` | Creates the `wms` schema that every application table lives in. |
 | `03-roles.sh` | Creates the `wms_app` (read/write) and `wms_readonly` (read-only) roles, with passwords from `WMS_APP_PASSWORD`/`WMS_READONLY_PASSWORD` — a shell script rather than a `.sql` file specifically so those passwords never end up hardcoded in a file committed to git. |
+
+## Schema & migrations
+
+`infra/postgres/init/` only bootstraps an *empty* `wms` schema — no
+tables. Those come from [`infra/migrations/`](../infra/migrations):
+versioned, numbered SQL files (`0001_create_shared_functions_and_audit_log.sql`,
+`0002_create_inventory_tables.sql`, ...) covering every bounded context's
+tables (`warehouses`/`locations`/`products`/`stock_items`,
+`users`/`roles`/`permissions`, `orders`/`order_lines`,
+`shipments`/`shipment_items`, `vehicles`/`drivers`, `routes`/`route_stops`,
+plus the shared `audit_logs` compliance trail every table writes to on
+INSERT/UPDATE/DELETE). Run them with `npm run db:migrate` after `db:up`
+(see the commands above).
+
+See [`infra/migrations/README.md`](../infra/migrations/README.md) for the
+full table-by-table breakdown, why this repo uses a plain SQL runner
+script instead of `node-pg-migrate`, and rollback procedures
+(`npm run db:migrate:down`).
 
 ## Connecting with DBeaver
 
