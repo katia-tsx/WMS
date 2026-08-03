@@ -149,8 +149,46 @@ npm install
 npm run lint
 ```
 
-## 7. Adding a new bounded context or a new adapter
+## 7. The Use Case pattern and the cross-cutting pipeline
 
-* **New use case in an existing context**: add a class under `application/use-cases/<context>/`, taking whatever ports it needs as constructor arguments; register it (and its dependencies) in `infrastructure/di/CompositionRoot.js`.
+### Use cases return `Result`, never throw for expected failures
+
+Every use case under `application/use-cases/<context>/` extends [`UseCase`](application/use-cases/UseCase.js). `UseCase` fixes `execute(input)` as a template method: it validates `input` first (if a `Validator` — see [`IValidator`](application/ports/IValidator.js) — was injected), then delegates to `handle(input)`. Concrete use cases only ever override `handle`, never `execute`, so validation can never be skipped by a subclass that forgets to call it itself.
+
+Both `execute` and `handle` return a `Result` ([`domain/shared-kernel/result/Result.js`](domain/shared-kernel/result/Result.js)) instead of throwing: [`AdjustStockUseCase`](application/use-cases/inventory/AdjustStockUseCase.js)`.handle` returns `Result.err(NotFoundError)` for an unknown sku, `Result.err(BusinessRuleViolationError)` for insufficient stock, and `Result.ok(product)` on success. A caller inspects `.isOk` / `.match({ ok, err })`; nothing needs a try/catch for a business outcome that was always possible.
+
+### `ApplicationService` composes multiple use cases atomically
+
+A single use case call is a bounded, single-aggregate operation. Fulfilling an order may need several — reserve stock, create a shipment, assign a route — and all of them need to succeed or none should apply. [`ApplicationService`](application/services/ApplicationService.js) is the base class for that: its `runInTransaction(work)` begins an `IUnitOfWork`, runs `work`, commits on success, and rolls back (rethrowing) if `work` throws. [`OrderFulfillmentOrchestrator`](application/orchestrators/OrderFulfillmentOrchestrator.js) extends it, wrapping its whole per-line loop in one transaction — if line 3 of 5 fails, lines 1 and 2's reservations roll back too, not just the one that failed (proved against the real [`InMemoryUnitOfWork`](infrastructure/database/InMemoryUnitOfWork.js) in `infrastructure/di/CompositionRoot.test.js`).
+
+### Cross-cutting concerns are decorators, not inline code
+
+Logging, authorization, and per-use-case transactions are never written inside a use case's own `handle`. Instead, [`application/use-cases/decorators/`](application/use-cases/decorators) provides:
+
+| Decorator | Adds |
+|---|---|
+| `LoggingUseCaseDecorator` | Logs start / success / failure via an injected `ILogger`. |
+| `AuthorizationUseCaseDecorator` | Runs a `policy(input)` before the inner use case; denies with `Result.err(AuthorizationError)` without ever calling `handle`. |
+| `TransactionalUseCaseDecorator` | Wraps *one* use case's own `IUnitOfWork` transaction (commit on `Result.ok`, rollback on `Result.err` or a throw). |
+
+`UseCasePipelineBuilder` composes them fluently, with the *last* `.withX()` call becoming the *outermost* layer:
+
+```js
+new UseCasePipelineBuilder(adjustStockUseCase)
+  .withTransaction(unitOfWork)   // innermost — only opens once authorized
+  .withAuthorization(policy)     // denies before a transaction ever opens
+  .withLogging(logger)           // outermost — logs both denials and successes
+  .build();
+```
+
+### Controllers only ever call the pipeline
+
+`infrastructure/di/CompositionRoot.js` builds this pipeline once per use case and hands the *pipeline*, not the bare use case, to whatever driving adapter needs it — `inventoryController` is constructed from `adjustStockUseCasePipeline`, never from `adjustStockUseCase` directly. This is a hard rule across all nine modules of the system: **a controller or UI adapter never calls a domain entity directly, and never calls a bare use case** — it only ever calls `execute(input)` on whatever the pipeline builder produced. That is what guarantees every request gets the same auditing, permission checks, and error normalization (see `infrastructure/http/inventoryController.js`'s `statusForError`, which maps `DomainError` subclasses to HTTP status codes) regardless of which controller or bounded context invoked it.
+
+The one exception is a use case composed inside an `ApplicationService` workflow (like `AdjustStockUseCase` inside `OrderFulfillmentOrchestrator`): it is injected *undecorated*, because the workflow's own shared transaction already covers it — wrapping it in its own `TransactionalUseCaseDecorator` too would open a nested transaction the simple `IUnitOfWork` here doesn't support. `CompositionRoot.js` registers both bindings (`adjustStockUseCase` and `adjustStockUseCasePipeline`) side by side, one per consumer, and documents why.
+
+## 8. Adding a new bounded context or a new adapter
+
+* **New use case in an existing context**: add a class under `application/use-cases/<context>/` extending `UseCase` (§7), taking whatever ports it needs — plus, optionally, an `IValidator` — as constructor arguments; register it, and a `UseCasePipelineBuilder`-wrapped version for any driving adapter to use, in `infrastructure/di/CompositionRoot.js`.
 * **New adapter for an existing port** (e.g. moving from `InMemoryInventoryRepository` to Postgres): add the new class under `infrastructure/database/` implementing the same port, and change one `container.register(...)` call in the composition root. Nothing in `application/` or `domain/` changes.
 * **New bounded context**: create `domain/<context>/{entities,value-objects,services,events}/`, following [`domain/inventory`](domain/inventory) as the template, then add its use cases and ports the same way inventory's were added.
