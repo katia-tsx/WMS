@@ -9,11 +9,13 @@ const { InMemoryUnitOfWork } = require('../database/InMemoryUnitOfWork');
 const { PostgresUnitOfWork } = require('../database/PostgresUnitOfWork');
 const { InMemoryEventPublisher } = require('../events/InMemoryEventPublisher');
 const { ConsoleEventPublisher } = require('../events/ConsoleEventPublisher');
+const { EventBus } = require('../events/EventBus');
 const { InMemoryLogger } = require('../logging/InMemoryLogger');
 const { ConsoleLogger } = require('../logging/ConsoleLogger');
 const { AdjustStockUseCase } = require('../../application/use-cases/inventory/AdjustStockUseCase');
 const { OrderFulfillmentOrchestrator } = require('../../application/orchestrators/OrderFulfillmentOrchestrator');
 const { Product } = require('../../domain/inventory/entities/Product');
+const { DomainEvent } = require('../../domain/shared-kernel/events/DomainEvent');
 
 /** @param {ReturnType<typeof buildApp>} app */
 function assertFullGraphResolved(app) {
@@ -34,7 +36,7 @@ describe('CompositionRoot — test configuration', () => {
     assertFullGraphResolved(app);
   });
 
-  test('the wired graph is actually usable end to end: reserving stock persists and publishes on depletion', async () => {
+  test('the bare adjustStockUseCase persists the reservation but never publishes anything itself', async () => {
     const app = buildApp({ mode: 'test' });
     await app.inventoryRepository.save(new Product({ sku: 'ABC-123', name: 'Widget', quantityOnHand: 5 }));
 
@@ -42,8 +44,22 @@ describe('CompositionRoot — test configuration', () => {
 
     assert.equal(result.isOk, true);
     assert.equal(result.value.quantityOnHand, 0);
-    assert.equal(app.eventPublisher.publishedEvents.length, 1);
-    assert.equal(app.eventPublisher.publishedEvents[0].type, 'inventory.stock-depleted');
+    // Events are buffered on the aggregate, not published — that only
+    // happens through adjustStockUseCasePipeline (see the next test).
+    assert.equal(app.eventPublisher.publishedEvents.length, 0);
+    assert.equal(result.value.pullDomainEvents().length, 2); // StockLevelChangedEvent + StockDepletedEvent
+  });
+
+  test('the pipeline-wrapped use case is what actually publishes events, only after its transaction commits', async () => {
+    const app = buildApp({ mode: 'test' });
+    await app.inventoryRepository.save(new Product({ sku: 'ABC-123', name: 'Widget', quantityOnHand: 5 }));
+
+    const result = await app.adjustStockUseCasePipeline.execute({ sku: 'ABC-123', amount: 5 });
+
+    assert.equal(result.isOk, true);
+    assert.equal(result.value.quantityOnHand, 0);
+    assert.equal(app.eventPublisher.publishedEvents.length, 2);
+    assert.equal(app.eventPublisher.publishedEvents[1].eventType, 'inventory.stock-depleted');
   });
 
   test('the controller is wired to the full pipeline: it logs, opens/commits a transaction, and normalizes the response', async () => {
@@ -106,7 +122,7 @@ describe('CompositionRoot — production configuration', () => {
 
     assert.ok(app.inventoryRepository instanceof PostgresInventoryRepository);
     assert.ok(app.unitOfWork instanceof PostgresUnitOfWork);
-    assert.ok(app.eventPublisher instanceof ConsoleEventPublisher);
+    assert.ok(app.eventPublisher instanceof EventBus);
     assert.ok(app.logger instanceof ConsoleLogger);
     assertFullGraphResolved(app);
   });
@@ -121,6 +137,17 @@ describe('CompositionRoot — production configuration', () => {
     const app = buildApp({ mode: 'production' });
     await assert.rejects(() => app.inventoryRepository.findBySku('ABC-123'), /not yet implemented/);
     await assert.rejects(() => app.unitOfWork.begin(), /not yet implemented/);
+  });
+
+  test('the production event bus has a catch-all subscriber wired to the logger', async () => {
+    const app = buildApp({ mode: 'production' });
+
+    await app.eventPublisher.publish(new DomainEvent('inventory.stock-depleted'));
+
+    // ConsoleLogger just prints; what we can assert here is that publishing
+    // doesn't throw and the bus recorded no dead letters for its own
+    // built-in subscriber.
+    assert.deepEqual(app.eventPublisher.deadLetterQueue, []);
   });
 });
 

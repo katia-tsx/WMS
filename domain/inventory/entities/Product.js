@@ -1,5 +1,10 @@
 'use strict';
 
+const { AggregateRoot } = require('../../shared-kernel/entities/AggregateRoot');
+const { StockLevelChangedEvent } = require('../events/StockLevelChangedEvent');
+const { StockDepletedEvent } = require('../events/StockDepletedEvent');
+const { LowStockThresholdBreachedEvent } = require('../events/LowStockThresholdBreachedEvent');
+
 /**
  * Domain error raised when a stock operation would leave quantityOnHand
  * negative. It lives in the domain layer because "you cannot reserve more
@@ -24,8 +29,18 @@ class InsufficientStockError extends Error {
  * Product is the aggregate root of the Inventory bounded context. It owns
  * every invariant around its own stock level; nothing outside this class
  * is allowed to mutate quantityOnHand directly.
+ *
+ * Extends AggregateRoot (domain/shared-kernel), so every state change
+ * that other parts of the system need to react to is recorded with
+ * `this.addDomainEvent(...)` right where it happens — Product never
+ * publishes anything itself, and never imports an IEventPublisher/EventBus
+ * (that would violate domain/'s zero-infrastructure rule). Whoever calls
+ * a method that adds events is responsible for eventually calling
+ * `pullDomainEvents()` and handing them to a publisher — in this
+ * codebase, that is TransactionalUseCaseDecorator or ApplicationService,
+ * and only after the write that persisted this Product has committed.
  */
-class Product {
+class Product extends AggregateRoot {
   /**
    * @param {Object} props
    * @param {string} props.sku
@@ -38,6 +53,7 @@ class Product {
     if (!name) throw new Error('Product requires a name.');
     if (quantityOnHand < 0) throw new Error('quantityOnHand cannot be negative.');
 
+    super(sku);
     this.sku = sku;
     this.name = name;
     this.quantityOnHand = quantityOnHand;
@@ -47,7 +63,10 @@ class Product {
   /** @param {number} amount */
   receiveStock(amount) {
     if (amount <= 0) throw new Error('receiveStock amount must be positive.');
+
+    const previousQuantityOnHand = this.quantityOnHand;
     this.quantityOnHand += amount;
+    this.addDomainEvent(new StockLevelChangedEvent(this.sku, previousQuantityOnHand, this.quantityOnHand));
   }
 
   /** @param {number} amount */
@@ -56,7 +75,18 @@ class Product {
     if (amount > this.quantityOnHand) {
       throw new InsufficientStockError(this.sku, amount, this.quantityOnHand);
     }
+
+    const previousQuantityOnHand = this.quantityOnHand;
     this.quantityOnHand -= amount;
+    this.addDomainEvent(new StockLevelChangedEvent(this.sku, previousQuantityOnHand, this.quantityOnHand));
+
+    if (this.quantityOnHand === 0) {
+      this.addDomainEvent(new StockDepletedEvent(this.sku));
+    } else if (previousQuantityOnHand > this.reorderThreshold && this.isBelowReorderThreshold()) {
+      // Fired only on the transition across the threshold, not on every
+      // subsequent reservation while already below it.
+      this.addDomainEvent(new LowStockThresholdBreachedEvent(this.sku, this.quantityOnHand, this.reorderThreshold));
+    }
   }
 
   isBelowReorderThreshold() {

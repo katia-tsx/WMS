@@ -3,12 +3,10 @@
 const { UseCase } = require('../UseCase');
 const { Result } = require('../../../domain/shared-kernel/result/Result');
 const { NotFoundError, BusinessRuleViolationError } = require('../../../domain/shared-kernel/errors/DomainError');
-const { StockDepletedEvent } = require('../../../domain/inventory/events/StockDepletedEvent');
 const { InsufficientStockError } = require('../../../domain/inventory/entities/Product');
 
 /**
  * @typedef {import('../../ports/InventoryRepositoryPort').InventoryRepositoryPort} InventoryRepositoryPort
- * @typedef {import('../../ports/EventPublisherPort').EventPublisherPort} EventPublisherPort
  * @typedef {import('../../ports/IValidator').IValidator} IValidator
  */
 
@@ -23,18 +21,24 @@ const { InsufficientStockError } = require('../../../domain/inventory/entities/P
  * injected) runs first, then `handle` below. Every expected failure
  * (unknown sku, insufficient stock) comes back as `Result.err`, never a
  * thrown exception.
+ *
+ * Notably, this use case does *not* depend on an IEventPublisher.
+ * `Product.reserveStock` records its own domain events internally (see
+ * domain/shared-kernel's AggregateRoot#addDomainEvent); publishing them
+ * is the responsibility of whatever wraps this use case in a transaction
+ * — `TransactionalUseCaseDecorator` for a standalone call, or
+ * `ApplicationService` for a multi-use-case workflow — and only after
+ * that transaction's commit succeeds. See ARCHITECTURE.md §9.
  */
 class AdjustStockUseCase extends UseCase {
   /**
    * @param {Object} deps
    * @param {InventoryRepositoryPort} deps.inventoryRepository
-   * @param {EventPublisherPort} deps.eventPublisher
    * @param {IValidator} [deps.validator]
    */
-  constructor({ inventoryRepository, eventPublisher, validator }) {
+  constructor({ inventoryRepository, validator }) {
     super({ validator });
     this.inventoryRepository = inventoryRepository;
-    this.eventPublisher = eventPublisher;
   }
 
   /**
@@ -59,10 +63,6 @@ class AdjustStockUseCase extends UseCase {
     }
 
     await this.inventoryRepository.save(product);
-
-    if (product.quantityOnHand === 0) {
-      await this.eventPublisher.publish(new StockDepletedEvent(product.sku));
-    }
 
     return Result.ok(product);
   }

@@ -14,6 +14,7 @@ const { InMemoryUnitOfWork } = require('../database/InMemoryUnitOfWork');
 const { PostgresUnitOfWork } = require('../database/PostgresUnitOfWork');
 const { ConsoleEventPublisher } = require('../events/ConsoleEventPublisher');
 const { InMemoryEventPublisher } = require('../events/InMemoryEventPublisher');
+const { EventBus } = require('../events/EventBus');
 const { ConsoleLogger } = require('../logging/ConsoleLogger');
 const { InMemoryLogger } = require('../logging/InMemoryLogger');
 const { createInventoryController } = require('../http/inventoryController');
@@ -35,17 +36,23 @@ const { createInventoryController } = require('../http/inventoryController');
  *
  * Two bindings exist for AdjustStockUseCase, on purpose:
  *  - `adjustStockUseCase` — the bare use case, with only its input
- *    validator attached. `orderFulfillmentOrchestrator` composes it
- *    directly, because a use case composed into an ApplicationService
- *    workflow must not open its own nested transaction — the workflow's
- *    own shared `unitOfWork` already covers it (see
- *    application/services/ApplicationService.js).
+ *    validator attached. It has no `eventPublisher` at all: it never
+ *    publishes anything, it only lets `Product` (an AggregateRoot) buffer
+ *    events on itself via `addDomainEvent`. `orderFulfillmentOrchestrator`
+ *    composes it directly, because a use case composed into an
+ *    ApplicationService workflow must not open its own nested transaction
+ *    — the workflow's own shared `unitOfWork` already covers it (see
+ *    application/services/ApplicationService.js), and the workflow
+ *    flushes those buffered events itself, once, after it commits.
  *  - `adjustStockUseCasePipeline` — the same use case wrapped in the
  *    full cross-cutting pipeline (transaction, authorization, logging;
- *    see UseCasePipelineBuilder). This is the one `inventoryController`
- *    is given: a controller only ever calls a pipeline-wrapped use case,
- *    never the bare one and never a domain entity — see ARCHITECTURE.md
- *    §8.
+ *    see UseCasePipelineBuilder). `withTransaction` is given the
+ *    `eventPublisher` too, so this is the layer that actually flushes and
+ *    publishes the aggregate's buffered events — only once its own
+ *    transaction has committed (see TransactionalUseCaseDecorator).
+ *    This is the one `inventoryController` is given: a controller only
+ *    ever calls a pipeline-wrapped use case, never the bare one and
+ *    never a domain entity — see ARCHITECTURE.md §9.
  *
  * @param {{ mode?: string }} [options]
  * @returns {Container}
@@ -78,7 +85,24 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
 
   container.register(
     'eventPublisher',
-    () => {
+    (c) => {
+      if (mode === 'production') {
+        // EventBus is the real pub/sub adapter: subscribers (possibly in
+        // other bounded contexts) register for a topic and are retried
+        // with backoff on failure, independently of each other and of
+        // whatever published the event. This catch-all subscriber gives
+        // production the same "see every event" visibility
+        // ConsoleEventPublisher gives development, without losing the
+        // fan-out/retry/dead-letter behavior a real deployment needs.
+        const eventBus = new EventBus();
+        const logger = c.resolve('logger');
+        eventBus.subscribe(
+          '*',
+          (event) => logger.info(`Domain event published: ${event.eventType}`, { eventId: event.eventId }),
+          { mode: 'async' },
+        );
+        return eventBus;
+      }
       if (mode === 'test') {
         return new InMemoryEventPublisher();
       }
@@ -103,7 +127,6 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
     (c) =>
       new AdjustStockUseCase({
         inventoryRepository: c.resolve('inventoryRepository'),
-        eventPublisher: c.resolve('eventPublisher'),
         validator: new AdjustStockInputValidator(),
       }),
     { lifetime: 'singleton' },
@@ -113,7 +136,7 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
     'adjustStockUseCasePipeline',
     (c) =>
       new UseCasePipelineBuilder(c.resolve('adjustStockUseCase'))
-        .withTransaction(c.resolve('unitOfWork'))
+        .withTransaction(c.resolve('unitOfWork'), c.resolve('eventPublisher'))
         // No real actor/permission system exists yet (domain/auth is still
         // scaffolded) — this permissive policy is a placeholder so the
         // pipeline shape is real and testable now; swap in a real policy
@@ -130,6 +153,7 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
       new OrderFulfillmentOrchestrator({
         adjustStockUseCase: c.resolve('adjustStockUseCase'),
         unitOfWork: c.resolve('unitOfWork'),
+        eventPublisher: c.resolve('eventPublisher'),
       }),
     { lifetime: 'singleton' },
   );

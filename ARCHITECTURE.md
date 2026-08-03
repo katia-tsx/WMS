@@ -192,3 +192,35 @@ The one exception is a use case composed inside an `ApplicationService` workflow
 * **New use case in an existing context**: add a class under `application/use-cases/<context>/` extending `UseCase` (§7), taking whatever ports it needs — plus, optionally, an `IValidator` — as constructor arguments; register it, and a `UseCasePipelineBuilder`-wrapped version for any driving adapter to use, in `infrastructure/di/CompositionRoot.js`.
 * **New adapter for an existing port** (e.g. moving from `InMemoryInventoryRepository` to Postgres): add the new class under `infrastructure/database/` implementing the same port, and change one `container.register(...)` call in the composition root. Nothing in `application/` or `domain/` changes.
 * **New bounded context**: create `domain/<context>/{entities,value-objects,services,events}/`, following [`domain/inventory`](domain/inventory) as the template, then add its use cases and ports the same way inventory's were added.
+
+## 9. The domain event bus and eventual consistency
+
+### Aggregates record; they never publish
+
+`Product` (and any future `AggregateRoot`) never imports an `IEventPublisher` or knows a bus exists — it only ever calls `this.addDomainEvent(...)` on itself, from inside the method whose state change is significant (`reserveStock` records `StockLevelChangedEvent` on every change, plus `StockDepletedEvent` or `LowStockThresholdBreachedEvent` when applicable — see [`Product`](domain/inventory/entities/Product.js)). This keeps `domain/` at zero infrastructure dependencies (§1) while still letting an aggregate be the one that decides *what* happened.
+
+### Publishing happens once, only after commit
+
+Something has to turn "an aggregate has buffered events" into "a publisher was told about them" — and it must only do so once the write that produced those events has actually persisted, never before, and never if it rolled back. [`application/events/flushDomainEvents.js`](application/events/flushDomainEvents.js) is that one function (`pullDomainEvents()` off one or more aggregates, then `eventPublisher.publishAll(...)`), and exactly two things call it, both only in their commit branch:
+
+* **`TransactionalUseCaseDecorator`** (§7) — after `unitOfWork.commit()` succeeds for a single use case, flushes events from whatever the use case's `Result.ok` returned. Its `Result.err` and thrown-error branches roll back and return *before* ever reaching that call.
+* **`ApplicationService#publishDomainEvents`** — a multi-step workflow (e.g. `OrderFulfillmentOrchestrator`) collects every aggregate its steps touched as they succeed, then calls this explicitly once `runInTransaction` has already resolved. If `runInTransaction` throws, the workflow's `catch` returns `Result.err` without ever reaching the publish call.
+
+Both are proven in their respective test files (search for "leak" in `TransactionalUseCaseDecorator.test.js`, `ApplicationService.test.js`, and `OrderFulfillmentOrchestrator.test.js`): an aggregate can buffer events and still have its transaction roll back, and in every such case, `publishedEvents` stays empty. This is what "preventing event leakage on rollback" means concretely — not a promise, a passing assertion.
+
+### `EventBus`: the production `IEventPublisher`
+
+[`infrastructure/events/EventBus.js`](infrastructure/events/EventBus.js) is an in-process publish/subscribe implementation of `IEventPublisher`, wired in for `mode === 'production'` (test mode keeps the simpler recording `InMemoryEventPublisher`; development keeps `ConsoleEventPublisher` — see `infrastructure/di/CompositionRoot.js`). Subscribers register for an exact topic (`'inventory.stock-depleted'`) or a namespace wildcard (`'inventory.*'`, or `'*'` for everything), as `'sync'` (awaited, in order, before `publish()` resolves) or `'async'` (awaited too, but independently of other subscribers).
+
+A subscriber that throws is retried with exponential backoff up to `maxRetries` times; if it still fails, it is recorded in `deadLetterQueue` and skipped — **a failing subscriber never blocks or fails another subscriber, or `publish()` itself** (proved in `EventBus.test.js`). Retrying one subscriber never causes another to be invoked more than once, and a single `publish()` call never re-invokes a subscriber beyond its own retry budget — an event is delivered to each subscriber exactly once per `publish()`, not duplicated by another subscriber's retry.
+
+### The five cross-module events defined so far
+
+| Event | Bounded context | Raised by |
+|---|---|---|
+| `StockLevelChangedEvent`, `StockDepletedEvent`, `LowStockThresholdBreachedEvent` | Inventory | `Product` (wired in now) |
+| `OrderPlacedEvent` | Orders | not yet — `domain/orders` has no entities yet |
+| `ShipmentDispatchedEvent` | Shipments | not yet — `domain/shipments` has no entities yet |
+| `RouteOptimizedEvent` | Routing | not yet — `domain/routing` has no entities yet |
+
+The last three exist so a subscriber can be written and tested against their shape today, ahead of the use case that will eventually raise them — the same "define the port/event before the adapter" ordering §3 and §7 already establish for ports and use cases.

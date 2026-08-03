@@ -25,7 +25,7 @@ const { TransactionalUseCaseDecorator } = require('./TransactionalUseCaseDecorat
  *
  * Controllers and other driving adapters call *only* the object
  * `build()` returns — never the bare use case, and never a domain entity
- * directly (see ARCHITECTURE.md §8) — so every request gets the same
+ * directly (see ARCHITECTURE.md §7) — so every request gets the same
  * auditing, permission checks, and transactional behavior regardless of
  * which controller invoked it.
  */
@@ -60,10 +60,11 @@ class UseCasePipelineBuilder {
 
   /**
    * @param {import('../../ports/IUnitOfWork').IUnitOfWork} unitOfWork
+   * @param {import('../../ports/IEventPublisher').IEventPublisher} [eventPublisher] if given, buffered domain events on the use case's returned aggregate are published once (and only once) the transaction commits
    * @returns {UseCasePipelineBuilder}
    */
-  withTransaction(unitOfWork) {
-    this.useCase = new TransactionalUseCaseDecorator(this.useCase, { unitOfWork });
+  withTransaction(unitOfWork, eventPublisher) {
+    this.useCase = new TransactionalUseCaseDecorator(this.useCase, { unitOfWork, eventPublisher });
     return this;
   }
 

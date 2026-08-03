@@ -22,6 +22,13 @@ class InMemoryEventPublisher {
   async publish(event) {
     this.publishedEvents.push(event);
   }
+
+  /** @param {Object[]} events */
+  async publishAll(events) {
+    for (const event of events) {
+      await this.publish(event);
+    }
+  }
 }
 
 module.exports = { InMemoryEventPublisher };

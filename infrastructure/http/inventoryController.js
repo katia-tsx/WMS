@@ -36,7 +36,7 @@ function statusForError(error) {
  *
  * It never touches a domain entity or repository directly — only the use
  * case (or, in the composition root, the pipeline-wrapped use case; see
- * ARCHITECTURE.md §8) it was handed, and only through `execute(input)`,
+ * ARCHITECTURE.md §7) it was handed, and only through `execute(input)`,
  * which always returns a `Result` rather than throwing.
  *
  * @param {{ execute: function(*): Promise<import('../../domain/shared-kernel/result/Result').Result> }} adjustStockUseCase

@@ -13,7 +13,12 @@ const { Result } = require('../../domain/shared-kernel/result/Result');
  * Extends `ApplicationService` (application/services/ApplicationService.js)
  * so the whole line-by-line loop runs inside one shared `IUnitOfWork`
  * transaction: if reserving stock for line 3 of 5 fails, lines 1 and 2's
- * reservations are rolled back too, not left half-applied.
+ * reservations are rolled back too, not left half-applied. Every
+ * aggregate a line touches is collected as it succeeds, and its buffered
+ * domain events are only published (via `publishDomainEvents`) after
+ * `runInTransaction` has already committed — never inside the loop
+ * itself, and never if the workflow rolls back, so a failure partway
+ * through can't leak events for lines that did apply but were undone.
  *
  * Only AdjustStockUseCase is wired in so far. ShipmentCreationUseCase and
  * RouteAssignmentUseCase plug in the same way, via constructor injection,
@@ -25,9 +30,10 @@ class OrderFulfillmentOrchestrator extends ApplicationService {
    * @param {Object} deps
    * @param {import('../use-cases/inventory/AdjustStockUseCase').AdjustStockUseCase} deps.adjustStockUseCase
    * @param {import('../ports/IUnitOfWork').IUnitOfWork} deps.unitOfWork
+   * @param {import('../ports/IEventPublisher').IEventPublisher} [deps.eventPublisher]
    */
-  constructor({ adjustStockUseCase, unitOfWork }) {
-    super({ unitOfWork });
+  constructor({ adjustStockUseCase, unitOfWork, eventPublisher }) {
+    super({ unitOfWork, eventPublisher });
     this.adjustStockUseCase = adjustStockUseCase;
   }
 
@@ -37,8 +43,10 @@ class OrderFulfillmentOrchestrator extends ApplicationService {
    * @returns {Promise<import('../../domain/shared-kernel/result/Result').Result>}
    */
   async fulfill(order) {
+    const touchedAggregates = [];
+
     try {
-      return await this.runInTransaction(async () => {
+      await this.runInTransaction(async () => {
         for (const line of order.lines) {
           const result = await this.adjustStockUseCase.execute({ sku: line.sku, amount: line.quantity });
           if (result.isErr) {
@@ -47,12 +55,18 @@ class OrderFulfillmentOrchestrator extends ApplicationService {
             // processed in this loop, not just the one that failed.
             throw result.error;
           }
+          touchedAggregates.push(result.value);
         }
-        return Result.ok(order);
       });
     } catch (error) {
+      // The transaction already rolled back inside runInTransaction; any
+      // events touchedAggregates buffered are discarded along with it —
+      // publishDomainEvents is never reached on this path.
       return Result.err(error);
     }
+
+    await this.publishDomainEvents(touchedAggregates);
+    return Result.ok(order);
   }
 }
 

@@ -1,6 +1,7 @@
 'use strict';
 
 const { Guard } = require('../../domain/shared-kernel/guard/Guard');
+const { flushDomainEvents } = require('../events/flushDomainEvents');
 
 /**
  * ApplicationService is the base class for a workflow that composes
@@ -17,10 +18,12 @@ class ApplicationService {
   /**
    * @param {Object} deps
    * @param {import('../ports/IUnitOfWork').IUnitOfWork} deps.unitOfWork
+   * @param {import('../ports/IEventPublisher').IEventPublisher} [deps.eventPublisher] used by `publishDomainEvents` below; omit for a workflow with nothing worth publishing
    */
-  constructor({ unitOfWork }) {
+  constructor({ unitOfWork, eventPublisher }) {
     Guard.againstNullOrUndefined(unitOfWork, 'unitOfWork');
     this.unitOfWork = unitOfWork;
+    this.eventPublisher = eventPublisher ?? null;
   }
 
   /**
@@ -51,6 +54,28 @@ class ApplicationService {
       await this.unitOfWork.rollback();
       throw error;
     }
+  }
+
+  /**
+   * Flushes and publishes buffered domain events from one or more
+   * aggregates the workflow touched. Call this only once the workflow's
+   * `runInTransaction` call has already resolved successfully — never
+   * from inside `work` itself, and never after a rollback (a thrown
+   * error from `runInTransaction` should propagate past this call, not
+   * be followed by it) — so events can never leak for a workflow that
+   * didn't actually persist. Mirrors what `TransactionalUseCaseDecorator`
+   * does automatically for a single use case; a multi-step workflow does
+   * it explicitly because only the subclass knows which aggregates its
+   * own steps touched.
+   *
+   * A no-op if no `eventPublisher` was supplied.
+   *
+   * @param {*} aggregateOrAggregates
+   * @returns {Promise<void>}
+   */
+  async publishDomainEvents(aggregateOrAggregates) {
+    if (!this.eventPublisher) return;
+    await flushDomainEvents(aggregateOrAggregates, this.eventPublisher);
   }
 }
 

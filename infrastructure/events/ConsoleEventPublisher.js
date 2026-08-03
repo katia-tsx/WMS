@@ -17,6 +17,13 @@ class ConsoleEventPublisher {
   async publish(event) {
     console.log('[event]', event);
   }
+
+  /** @param {Object[]} events */
+  async publishAll(events) {
+    for (const event of events) {
+      await this.publish(event);
+    }
+  }
 }
 
 module.exports = { ConsoleEventPublisher };
