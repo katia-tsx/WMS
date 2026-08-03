@@ -188,3 +188,92 @@ describe('Router — error handling', () => {
     assert.equal(JSON.parse(res.body).detail, 'already dispatched');
   });
 });
+
+describe('Router — string bodies (e.g. /metrics)', () => {
+  test('a string body is sent as-is, with a text/plain default Content-Type', async () => {
+    const router = new Router();
+    router.get('/metrics', async () => ({ status: 200, body: 'foo_total 1\n' }));
+
+    const res = mockRes();
+    await router.handle(mockReq({ url: '/metrics' }), res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body, 'foo_total 1\n');
+    assert.equal(res.headers['Content-Type'], 'text/plain; charset=utf-8');
+  });
+
+  test('an explicit Content-Type header overrides the string default', async () => {
+    const router = new Router();
+    router.get('/metrics', async () => ({
+      status: 200,
+      body: 'foo 1\n',
+      headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' },
+    }));
+
+    const res = mockRes();
+    await router.handle(mockReq({ url: '/metrics' }), res);
+
+    assert.equal(res.headers['Content-Type'], 'text/plain; version=0.0.4; charset=utf-8');
+  });
+});
+
+describe('Router — req.route', () => {
+  test('is set to the matched route\'s pattern, not the interpolated URL', async () => {
+    const router = new Router();
+    let seenRoute;
+    router.get('/inventory/:sku', async (req) => { seenRoute = req.route; return { status: 200 }; });
+
+    await router.handle(mockReq({ url: '/inventory/ABC-123' }), mockRes());
+
+    assert.equal(seenRoute, '/inventory/:sku');
+  });
+});
+
+describe('Router — metrics', () => {
+  function fakeMetrics() {
+    return { observations: [], observeHistogram(name, value, labels) { this.observations.push({ name, value, labels }); } };
+  }
+
+  test('observes http_request_duration_seconds, labeled by method/route/status, for a matched route', async () => {
+    const metrics = fakeMetrics();
+    const router = new Router({ metrics });
+    router.get('/inventory/:sku', async () => ({ status: 200, body: {} }));
+
+    await router.handle(mockReq({ method: 'GET', url: '/inventory/ABC-123' }), mockRes());
+
+    assert.equal(metrics.observations.length, 1);
+    const observation = metrics.observations[0];
+    assert.equal(observation.name, 'http_request_duration_seconds');
+    assert.equal(observation.labels.method, 'GET');
+    assert.equal(observation.labels.route, '/inventory/:sku');
+    assert.equal(observation.labels.status, '200');
+    assert.ok(observation.value >= 0);
+  });
+
+  test('labels an unmatched route as "unmatched" with status 404', async () => {
+    const metrics = fakeMetrics();
+    const router = new Router({ metrics });
+
+    await router.handle(mockReq({ url: '/nope' }), mockRes());
+
+    assert.equal(metrics.observations[0].labels.route, 'unmatched');
+    assert.equal(metrics.observations[0].labels.status, '404');
+  });
+
+  test('still records an observation when the handler throws, labeled with the mapped error status', async () => {
+    const metrics = fakeMetrics();
+    const router = new Router({ metrics });
+    router.get('/x', async () => { throw new Error('boom'); });
+
+    await router.handle(mockReq({ url: '/x' }), mockRes());
+
+    assert.equal(metrics.observations[0].labels.route, '/x');
+    assert.equal(metrics.observations[0].labels.status, '500');
+  });
+
+  test('does nothing (and does not throw) when no metrics recorder was given', async () => {
+    const router = new Router();
+    router.get('/x', async () => ({ status: 200 }));
+    await assert.doesNotReject(() => router.handle(mockReq({ url: '/x' }), mockRes()));
+  });
+});

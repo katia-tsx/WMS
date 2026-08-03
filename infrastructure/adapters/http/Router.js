@@ -77,14 +77,21 @@ function runMiddlewareChain(middlewareList, req, res) {
 }
 
 /**
+ * Writes a route's `{ status, body, headers }` descriptor to `res`. A
+ * string `body` (e.g. `/metrics`'s Prometheus text — see routes.js) is
+ * sent as-is with a `text/plain` default; anything else is
+ * JSON-serialized with an `application/json` default — either default
+ * is overridable via `headers['Content-Type']`.
+ *
  * @param {*} res
  * @param {{ status: number, body?: *, headers?: Object<string,string> }} response
  */
 function writeJsonResponse(res, { status, body, headers = {} }) {
   const hasBody = body !== undefined;
-  const payload = hasBody ? JSON.stringify(body) : '';
+  const isRawText = typeof body === 'string';
+  const payload = hasBody ? (isRawText ? body : JSON.stringify(body)) : '';
   res.writeHead(status, {
-    'Content-Type': 'application/json',
+    'Content-Type': isRawText ? 'text/plain; charset=utf-8' : 'application/json',
     ...headers,
     ...(hasBody ? { 'Content-Length': Buffer.byteLength(payload) } : {}),
   });
@@ -109,13 +116,22 @@ function writeJsonResponse(res, { status, body, headers = {} }) {
  * describing it, consumed by generateOpenApiDocument.js to produce an
  * OpenAPI 3.0 document straight from the routes actually registered,
  * rather than a hand-maintained spec that drifts from the code.
+ *
+ * If an `IMetricsRecorder` is given, every request — matched or not,
+ * successful or errored — observes one `http_request_duration_seconds`
+ * histogram sample, labeled by `method`, `route` (the *pattern* that
+ * matched, e.g. `/inventory/:sku/reserve` — never the raw interpolated
+ * URL, which would make the metric's cardinality grow without bound one
+ * sku at a time), and the final `status`.
  */
 class Router {
-  constructor() {
+  /** @param {{ metrics?: import('../../../application/ports/IMetricsRecorder').IMetricsRecorder }} [options] */
+  constructor({ metrics } = {}) {
     /** @type {function(*,*,function(Error=):void)[]} */
     this.globalMiddleware = [];
     /** @type {{ method: string, path: string, regex: RegExp, paramNames: string[], middleware: Function[], handler: Function, meta: Object }[]} */
     this.routes = [];
+    this.metrics = metrics ?? null;
   }
 
   /**
@@ -210,6 +226,9 @@ class Router {
    */
   async handle(req, res) {
     const pathname = (req.url || '/').split('?')[0];
+    const startedAt = process.hrtime.bigint();
+    let routePattern = 'unmatched';
+    let finalStatus = 500;
 
     try {
       const matched = this._match(req.method, pathname);
@@ -219,19 +238,33 @@ class Router {
           new NotFoundError(`No route matches ${req.method} ${pathname}.`),
           { instance: pathname },
         );
+        finalStatus = status;
         writeJsonResponse(res, { status, body, headers });
         return;
       }
 
+      routePattern = matched.route.path;
       req.params = matched.params;
+      req.route = matched.route.path;
 
       await runMiddlewareChain([...this.globalMiddleware, ...matched.route.middleware], req, res);
 
       const outcome = await matched.route.handler(req, res);
+      finalStatus = outcome.status;
       writeJsonResponse(res, outcome);
     } catch (error) {
       const { status, body, headers } = toProblemDetails(error, { instance: pathname });
+      finalStatus = status;
       writeJsonResponse(res, { status, body, headers });
+    } finally {
+      if (this.metrics) {
+        const durationSeconds = Number(process.hrtime.bigint() - startedAt) / 1e9;
+        this.metrics.observeHistogram('http_request_duration_seconds', durationSeconds, {
+          method: req.method,
+          route: routePattern,
+          status: String(finalStatus),
+        });
+      }
     }
   }
 }

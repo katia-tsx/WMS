@@ -1,6 +1,7 @@
 'use strict';
 
 const { Router } = require('./Router');
+const { correlationId } = require('./middleware/correlationId');
 const { jsonBodyParser } = require('./middleware/jsonBodyParser');
 const { validateBody } = require('./middleware/validateBody');
 const { generateOpenApiDocument } = require('./openapi/generateOpenApiDocument');
@@ -50,11 +51,17 @@ const PROBLEM_DETAILS_SCHEMA = {
  * Registers every route this API serves on a fresh Router, given
  * already-constructed controllers (infrastructure/di/CompositionRoot.js
  * builds each controller exactly once — see its `inventoryController`/
- * `orderController` bindings — and hands them here so routing and
- * controller construction each have one source of truth). This file
- * itself never imports application/ or domain/ directly, so it stays a
- * pure infrastructure/adapters/http/ concern despite being the thing
- * that ties controllers to paths.
+ * `orderController`/`healthController` bindings — and hands them here so
+ * routing and controller construction each have one source of truth).
+ * This file itself never imports application/ or domain/ directly, so it
+ * stays a pure infrastructure/adapters/http/ concern despite being the
+ * thing that ties controllers to paths.
+ *
+ * `correlationId` is registered first, ahead of even body parsing, so
+ * the trace it establishes (see
+ * infrastructure/logging/CorrelationContext.js) covers the entire
+ * request — every log line anywhere in the chain that follows, down
+ * through the use case pipeline, shares the same `traceId`.
  *
  * New module, new controller: see infrastructure/adapters/http/README.md
  * for the checklist (controller, request schema, route registration
@@ -62,21 +69,48 @@ const PROBLEM_DETAILS_SCHEMA = {
  * once their use cases exist (see OrderController.js's own comment for
  * why there isn't one yet).
  *
- * @param {Object} controllers
- * @param {ReturnType<typeof import('./controllers/InventoryController').createInventoryController>} controllers.inventoryController
- * @param {ReturnType<typeof import('./controllers/OrderController').createOrderController>} controllers.orderController
+ * @param {Object} deps
+ * @param {ReturnType<typeof import('./controllers/InventoryController').createInventoryController>} deps.inventoryController
+ * @param {ReturnType<typeof import('./controllers/OrderController').createOrderController>} deps.orderController
+ * @param {ReturnType<typeof import('./controllers/HealthController').createHealthController>} deps.healthController
+ * @param {import('../../observability/MetricsRegistry').MetricsRegistry} deps.metricsRegistry
  * @returns {Router}
  */
-function createApiRouter({ inventoryController, orderController }) {
-  const router = new Router();
+function createApiRouter({ inventoryController, orderController, healthController, metricsRegistry }) {
+  const router = new Router({ metrics: metricsRegistry });
 
+  router.use(correlationId());
   router.use(jsonBodyParser());
 
-  router.get('/health', async () => ({ status: 200, body: { status: 'ok' } }), {
+  router.get('/health', () => healthController.liveness(), {
     meta: {
-      summary: 'Liveness check',
+      summary: 'Liveness probe: is the process up at all? Never checks a dependency.',
       tags: ['Meta'],
-      responses: { 200: { description: 'The service is up.', schema: { type: 'object', properties: { status: { type: 'string' } } } } },
+      responses: {
+        200: {
+          description: 'The process is up.',
+          schema: { type: 'object', properties: { status: { type: 'string' }, uptimeSeconds: { type: 'integer' } } },
+        },
+      },
+    },
+  });
+
+  router.get('/ready', () => healthController.readiness(), {
+    meta: {
+      summary: 'Readiness probe: can this instance actually serve traffic right now?',
+      tags: ['Meta'],
+      responses: {
+        200: { description: 'Every dependency check passed.' },
+        503: { description: 'At least one dependency check failed (see body.checks).' },
+      },
+    },
+  });
+
+  router.get('/metrics', () => ({ status: 200, body: metricsRegistry.toPrometheusText() }), {
+    meta: {
+      summary: 'Prometheus text-format exposition of request/use-case metrics.',
+      tags: ['Meta'],
+      responses: { 200: { description: 'Prometheus text exposition format.' } },
     },
   });
 

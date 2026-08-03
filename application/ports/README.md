@@ -32,6 +32,7 @@ A handful of methods are *not* abstract because they have one correct default bu
 | `IEventPublisher.js` | `IEventPublisher` | Domain-event dispatch: `publish`, `publishAll`. |
 | `IClock.js` | `IClock` | Testable current time: `now`. |
 | `ILogger.js` | `ILogger` | Structured logging: `debug`, `info`, `warn`, `error`. |
+| `IMetricsRecorder.js` | `IMetricsRecorder` | Metrics: `incrementCounter`, `observeHistogram`. |
 | `INotificationGateway.js` | `INotificationGateway` | Send a message to a human (Notifications context): `send`. |
 | `IVoiceSynthesisGateway.js` | `IVoiceSynthesisGateway` | Text-to-speech (Voice AI context): `synthesizeSpeech`. |
 | `IRoutingEngine.js` | `IRoutingEngine` | Route planning (Routing context): `planRoute`. |

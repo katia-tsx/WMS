@@ -6,6 +6,7 @@ const { UseCasePipelineBuilder } = require('./UseCasePipelineBuilder');
 const { LoggingUseCaseDecorator } = require('./LoggingUseCaseDecorator');
 const { AuthorizationUseCaseDecorator } = require('./AuthorizationUseCaseDecorator');
 const { TransactionalUseCaseDecorator } = require('./TransactionalUseCaseDecorator');
+const { MetricsUseCaseDecorator } = require('./MetricsUseCaseDecorator');
 const { Result } = require('../../../domain/shared-kernel/result/Result');
 
 class RecordingLogger {
@@ -25,6 +26,14 @@ class RecordingUnitOfWork {
   async begin() { this.calls.push('begin'); }
   async commit() { this.calls.push('commit'); }
   async rollback() { this.calls.push('rollback'); }
+}
+
+class RecordingMetricsRecorder {
+  constructor() {
+    this.counters = [];
+  }
+  incrementCounter(name, labels) { this.counters.push({ name, labels }); }
+  observeHistogram() {}
 }
 
 describe('UseCasePipelineBuilder', () => {
@@ -83,5 +92,25 @@ describe('UseCasePipelineBuilder', () => {
 
     assert.equal(result.isErr, true);
     assert.deepEqual(unitOfWork.calls, []);
+  });
+
+  test('withMetrics wraps in a MetricsUseCaseDecorator, and records even a denial when placed outside authorization', async () => {
+    const metricsRecorder = new RecordingMetricsRecorder();
+    const useCase = { execute: async (input) => Result.ok(input) };
+
+    const built = new UseCasePipelineBuilder(useCase).withMetrics(metricsRecorder, 'DemoUseCase').build();
+    assert.ok(built instanceof MetricsUseCaseDecorator);
+
+    const pipeline = new UseCasePipelineBuilder(useCase)
+      .withAuthorization(() => false, 'DemoUseCase')
+      .withMetrics(metricsRecorder, 'DemoUseCase')
+      .build();
+
+    const result = await pipeline.execute({});
+
+    assert.equal(result.isErr, true);
+    assert.deepEqual(metricsRecorder.counters, [
+      { name: 'use_case_executions_total', labels: { use_case: 'DemoUseCase', outcome: 'err' } },
+    ]);
   });
 });

@@ -2,6 +2,7 @@
 
 const { Container } = require('./Container');
 const { loadEnvFile, getRuntimeMode } = require('../config/env');
+const { loadConfig } = require('../config/Config');
 
 const { AdjustStockUseCase } = require('../../application/use-cases/inventory/AdjustStockUseCase');
 const { AdjustStockInputValidator } = require('../../application/use-cases/inventory/AdjustStockInputValidator');
@@ -17,8 +18,11 @@ const { InMemoryEventPublisher } = require('../events/InMemoryEventPublisher');
 const { EventBus } = require('../events/EventBus');
 const { ConsoleLogger } = require('../logging/ConsoleLogger');
 const { InMemoryLogger } = require('../logging/InMemoryLogger');
+const { StructuredLogger } = require('../logging/StructuredLogger');
+const { MetricsRegistry } = require('../observability/MetricsRegistry');
 const { createInventoryController } = require('../adapters/http/controllers/InventoryController');
 const { createOrderController } = require('../adapters/http/controllers/OrderController');
+const { createHealthController } = require('../adapters/http/controllers/HealthController');
 const { createApiRouter } = require('../adapters/http/routes');
 const { createHttpServer } = require('../adapters/http/createHttpServer');
 
@@ -64,11 +68,13 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
   loadEnvFile();
   const container = new Container();
 
+  container.register('config', () => loadConfig({ mode }), { lifetime: 'singleton' });
+
   container.register(
     'inventoryRepository',
-    () => {
+    (c) => {
       if (mode === 'production') {
-        return new PostgresInventoryRepository({ connectionString: process.env.DATABASE_URL });
+        return new PostgresInventoryRepository({ connectionString: c.resolve('config').databaseUrl });
       }
       return new InMemoryInventoryRepository();
     },
@@ -79,7 +85,7 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
     'unitOfWork',
     (c) => {
       if (mode === 'production') {
-        return new PostgresUnitOfWork({ connectionString: process.env.DATABASE_URL });
+        return new PostgresUnitOfWork({ connectionString: c.resolve('config').databaseUrl });
       }
       return new InMemoryUnitOfWork([c.resolve('inventoryRepository').products]);
     },
@@ -117,6 +123,13 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
   container.register(
     'logger',
     () => {
+      if (mode === 'production') {
+        // Structured JSON — one object per line, traceId included
+        // automatically (see infrastructure/logging/CorrelationContext.js)
+        // — is what a real log aggregator parses; ConsoleLogger's
+        // human-readable format is for a developer reading a terminal.
+        return new StructuredLogger();
+      }
       if (mode === 'test') {
         return new InMemoryLogger();
       }
@@ -124,6 +137,13 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
     },
     { lifetime: 'singleton' },
   );
+
+  // Mode-independent (unlike most bindings above): metrics collection is
+  // cheap, has no external dependency, and is just as useful for
+  // introspection in development/test as it is in production, so there
+  // is no in-memory-vs-real adapter split here the way there is for the
+  // database or event bus.
+  container.register('metricsRegistry', () => new MetricsRegistry(), { lifetime: 'singleton' });
 
   container.register(
     'adjustStockUseCase',
@@ -145,6 +165,7 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
         // pipeline shape is real and testable now; swap in a real policy
         // once authorization exists, with no change to the controller.
         .withAuthorization(() => true, 'AdjustStockUseCase')
+        .withMetrics(c.resolve('metricsRegistry'), 'AdjustStockUseCase')
         .withLogging(c.resolve('logger'), 'AdjustStockUseCase')
         .build(),
     { lifetime: 'singleton' },
@@ -174,11 +195,23 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
   );
 
   container.register(
+    'healthController',
+    (c) =>
+      createHealthController({
+        inventoryRepository: c.resolve('inventoryRepository'),
+        eventPublisher: c.resolve('eventPublisher'),
+      }),
+    { lifetime: 'singleton' },
+  );
+
+  container.register(
     'router',
     (c) =>
       createApiRouter({
         inventoryController: c.resolve('inventoryController'),
         orderController: c.resolve('orderController'),
+        healthController: c.resolve('healthController'),
+        metricsRegistry: c.resolve('metricsRegistry'),
       }),
     { lifetime: 'singleton' },
   );
@@ -196,15 +229,18 @@ function buildContainer({ mode = getRuntimeMode() } = {}) {
  * @param {{ mode?: string }} [options]
  * @returns {{
  *   container: Container,
+ *   config: import('../config/Config').AppConfig,
  *   inventoryRepository: *,
  *   unitOfWork: *,
  *   eventPublisher: *,
  *   logger: *,
+ *   metricsRegistry: import('../observability/MetricsRegistry').MetricsRegistry,
  *   adjustStockUseCase: AdjustStockUseCase,
  *   adjustStockUseCasePipeline: *,
  *   orderFulfillmentOrchestrator: OrderFulfillmentOrchestrator,
  *   inventoryController: *,
  *   orderController: *,
+ *   healthController: *,
  *   router: import('../adapters/http/Router').Router,
  *   httpServer: import('node:http').Server,
  * }}
@@ -213,10 +249,12 @@ function buildApp(options) {
   const container = buildContainer(options);
   return {
     container,
+    config: container.resolve('config'),
     inventoryRepository: container.resolve('inventoryRepository'),
     unitOfWork: container.resolve('unitOfWork'),
     eventPublisher: container.resolve('eventPublisher'),
     logger: container.resolve('logger'),
+    metricsRegistry: container.resolve('metricsRegistry'),
     adjustStockUseCase: container.resolve('adjustStockUseCase'),
     adjustStockUseCasePipeline: container.resolve('adjustStockUseCasePipeline'),
     orderFulfillmentOrchestrator: container.resolve('orderFulfillmentOrchestrator'),

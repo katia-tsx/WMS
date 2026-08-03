@@ -4,6 +4,7 @@ const { Guard } = require('../../../domain/shared-kernel/guard/Guard');
 const { LoggingUseCaseDecorator } = require('./LoggingUseCaseDecorator');
 const { AuthorizationUseCaseDecorator } = require('./AuthorizationUseCaseDecorator');
 const { TransactionalUseCaseDecorator } = require('./TransactionalUseCaseDecorator');
+const { MetricsUseCaseDecorator } = require('./MetricsUseCaseDecorator');
 
 /**
  * UseCasePipelineBuilder composes cross-cutting decorators around a use
@@ -15,11 +16,12 @@ const { TransactionalUseCaseDecorator } = require('./TransactionalUseCaseDecorat
  * *last* call becomes the *outermost* layer — the first thing that runs
  * on the way in, and the last thing that sees the result on the way out.
  * The recommended order is transaction innermost, then authorization,
- * then logging outermost:
+ * then metrics, then logging outermost:
  *
  *   new UseCasePipelineBuilder(adjustStockUseCase)
  *     .withTransaction(unitOfWork)   // innermost: only opens once authorized
  *     .withAuthorization(policy)     // denies before a transaction ever opens
+ *     .withMetrics(metricsRecorder)  // counts/times denials too, not just real attempts
  *     .withLogging(logger)           // outermost: logs both denials and successes
  *     .build();
  *
@@ -65,6 +67,16 @@ class UseCasePipelineBuilder {
    */
   withTransaction(unitOfWork, eventPublisher) {
     this.useCase = new TransactionalUseCaseDecorator(this.useCase, { unitOfWork, eventPublisher });
+    return this;
+  }
+
+  /**
+   * @param {import('../../ports/IMetricsRecorder').IMetricsRecorder} metricsRecorder
+   * @param {string} [useCaseName]
+   * @returns {UseCasePipelineBuilder}
+   */
+  withMetrics(metricsRecorder, useCaseName) {
+    this.useCase = new MetricsUseCaseDecorator(this.useCase, { metricsRecorder, useCaseName });
     return this;
   }
 
