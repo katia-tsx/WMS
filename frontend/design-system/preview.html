@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Design System — Preview</title>
+<link rel="stylesheet" href="./tokens.css" />
+<script type="module" src="./index.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ---- Sidebar --------------------------------------------------------- */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: var(--space-6) var(--space-4);
+    border-right: 1px solid var(--color-border-default);
+    background: var(--color-bg-subtle);
+  }
+  .sidebar h1 { font-size: var(--text-lg); margin: 0 0 var(--space-1); }
+  .sidebar .subtitle { font-size: var(--text-xs); color: var(--color-text-tertiary); margin: 0 0 var(--space-6); }
+  .sidebar nav ul { list-style: none; margin: 0 0 var(--space-5); padding: 0; }
+  .sidebar nav .group-label {
+    font-size: var(--text-2xs);
+    font-weight: var(--font-weight-semibold);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-tertiary);
+    margin: 0 0 var(--space-2);
+  }
+  .sidebar nav a {
+    display: block;
+    padding: var(--space-1) var(--space-2);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-size: var(--text-sm);
+  }
+  .sidebar nav a:hover { background: var(--color-bg-muted); color: var(--color-text-primary); }
+  .sidebar nav a:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+
+  /* ---- Main content ------------------------------------------------------ */
+  main { padding: var(--space-8) var(--space-10) var(--space-24); max-width: 960px; }
+  section { margin-bottom: var(--space-16); scroll-margin-top: var(--space-6); }
+  section > h2 {
+    font-size: var(--text-3xl);
+    font-weight: var(--font-weight-semibold);
+    margin: 0 0 var(--space-2);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--color-border-default);
+  }
+  section > p.lede { color: var(--color-text-secondary); font-size: var(--text-md); margin: var(--space-3) 0 var(--space-6); max-width: 60ch; }
+  h3.component-name { font-size: var(--text-xl); font-weight: var(--font-weight-semibold); margin: var(--space-8) 0 var(--space-3); }
+  h4.demo-label { font-size: var(--text-xs); font-weight: var(--font-weight-semibold); text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-tertiary); margin: var(--space-5) 0 var(--space-3); }
+
+  .demo {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-6);
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-lg);
+  }
+  .demo.column { flex-direction: column; align-items: stretch; }
+
+  table.api {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: var(--space-4);
+    font-size: var(--text-sm);
+  }
+  table.api caption { text-align: left; font-size: var(--text-xs); color: var(--color-text-tertiary); margin-bottom: var(--space-2); }
+  table.api th, table.api td { text-align: left; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border-subtle); vertical-align: top; }
+  table.api th { color: var(--color-text-secondary); font-weight: var(--font-weight-medium); font-size: var(--text-xs); text-transform: uppercase; letter-spacing: 0.03em; }
+  table.api code { font-family: var(--font-mono); font-size: 0.9em; background: var(--color-bg-muted); padding: 1px 5px; border-radius: var(--radius-xs); }
+
+  .swatch-row { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+  .swatch { width: 84px; }
+  .swatch .chip { height: 48px; border-radius: var(--radius-md); border: 1px solid var(--color-border-subtle); }
+  .swatch .label { font-size: var(--text-2xs); color: var(--color-text-secondary); margin-top: var(--space-1); font-family: var(--font-mono); }
+
+  .space-row { display: flex; flex-direction: column; gap: var(--space-2); }
+  .space-item { display: flex; align-items: center; gap: var(--space-3); }
+  .space-item .bar { height: 16px; background: var(--color-primary); border-radius: var(--radius-xs); }
+  .space-item .name { width: 90px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-secondary); }
+
+  .type-row { display: flex; align-items: baseline; gap: var(--space-4); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
+  .type-row .name { width: 90px; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--color-text-tertiary); flex-shrink: 0; }
+
+  .radius-row, .shadow-row { display: flex; flex-wrap: wrap; gap: var(--space-5); }
+  .radius-item, .shadow-item { text-align: center; }
+  .radius-item .box { width: 72px; height: 72px; background: var(--color-primary-subtle); border: 1px solid var(--color-primary); }
+  .shadow-item .box { width: 96px; height: 64px; background: var(--color-bg-surface); border-radius: var(--radius-md); }
+  .radius-item .name, .shadow-item .name { display: block; margin-top: var(--space-2); font-size: var(--text-2xs); font-family: var(--font-mono); color: var(--color-text-secondary); }
+
+  code.inline { font-family: var(--font-mono); font-size: 0.9em; background: var(--color-bg-muted); padding: 1px 5px; border-radius: var(--radius-xs); }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <h1>WMS Design System</h1>
+  <p class="subtitle">Tokens &amp; Web Components</p>
+  <wms-button id="theme-toggle" size="sm" variant="secondary" full-width style="margin-bottom: var(--space-5);">🌙 Toggle Dark Theme</wms-button>
+  <nav aria-label="Preview sections">
+    <p class="group-label">Foundations</p>
+    <ul>
+      <li><a href="#color">Color</a></li>
+      <li><a href="#spacing">Spacing</a></li>
+      <li><a href="#typography">Typography</a></li>
+      <li><a href="#radius">Radius</a></li>
+      <li><a href="#elevation">Elevation</a></li>
+    </ul>
+    <p class="group-label">Components</p>
+    <ul>
+      <li><a href="#wms-button">wms-button</a></li>
+      <li><a href="#wms-input">wms-input</a></li>
+      <li><a href="#wms-badge">wms-badge</a></li>
+      <li><a href="#wms-card">wms-card</a></li>
+      <li><a href="#wms-modal">wms-modal</a></li>
+      <li><a href="#wms-toast">wms-toast</a></li>
+      <li><a href="#wms-skeleton">wms-skeleton</a></li>
+    </ul>
+  </nav>
+</aside>
+
+<main>
+
+  <!-- ================================================================ -->
+  <section id="color">
+    <h2>Color</h2>
+    <p class="lede">Neutral grays, a single brand hue, and semantic success/warning/danger/info scales. Components consume semantic aliases (<code class="inline">--color-primary</code>, <code class="inline">--color-danger-subtle</code> …), never the raw scale, so retheming means editing <code class="inline">tokens.css</code> only.</p>
+
+    <h4 class="demo-label">Neutral</h4>
+    <div class="swatch-row" id="swatch-gray"></div>
+
+    <h4 class="demo-label">Brand</h4>
+    <div class="swatch-row" id="swatch-brand"></div>
+
+    <h4 class="demo-label">Semantic</h4>
+    <div class="swatch-row" id="swatch-semantic"></div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="spacing">
+    <h2>Spacing</h2>
+    <p class="lede">8pt grid with a 4px half-step for dense, data-heavy screens. Tokens run <code class="inline">--space-0</code> through <code class="inline">--space-32</code>.</p>
+    <div class="demo column">
+      <div class="space-row" id="space-scale"></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="typography">
+    <h2>Typography</h2>
+    <p class="lede">Inter (variable font) with a system-sans fallback stack, plus a monospace token for tabular SKU/quantity data. Body defaults to 14px to match dense SaaS dashboards.</p>
+    <div class="demo column" id="type-scale"></div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="radius">
+    <h2>Border radius</h2>
+    <div class="demo">
+      <div class="radius-row" id="radius-scale"></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="elevation">
+    <h2>Elevation</h2>
+    <p class="lede">Shadow tokens for card layering. In dark mode these automatically swap to a hairline-border strategy since dark shadows don't read well on dark surfaces.</p>
+    <div class="demo">
+      <div class="shadow-row" id="shadow-scale"></div>
+    </div>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-button">
+    <h2>Components</h2>
+
+    <h3 class="component-name">&lt;wms-button&gt;</h3>
+
+    <h4 class="demo-label">Variants</h4>
+    <div class="demo">
+      <wms-button variant="primary">Primary</wms-button>
+      <wms-button variant="secondary">Secondary</wms-button>
+      <wms-button variant="outline">Outline</wms-button>
+      <wms-button variant="ghost">Ghost</wms-button>
+      <wms-button variant="danger">Danger</wms-button>
+    </div>
+
+    <h4 class="demo-label">Sizes</h4>
+    <div class="demo">
+      <wms-button size="sm">Small</wms-button>
+      <wms-button size="md">Medium</wms-button>
+      <wms-button size="lg">Large</wms-button>
+    </div>
+
+    <h4 class="demo-label">States</h4>
+    <div class="demo">
+      <wms-button disabled>Disabled</wms-button>
+      <wms-button loading>Loading</wms-button>
+      <wms-button full-width>Full width</wms-button>
+    </div>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>variant</code></td><td>primary · secondary · outline · ghost · danger</td><td>primary</td><td></td></tr>
+        <tr><td><code>size</code></td><td>sm · md · lg</td><td>md</td><td></td></tr>
+        <tr><td><code>disabled</code></td><td>boolean</td><td>—</td><td>Also blocked while <code>loading</code></td></tr>
+        <tr><td><code>loading</code></td><td>boolean</td><td>—</td><td>Shows spinner, sets <code>aria-busy</code></td></tr>
+        <tr><td><code>type</code></td><td>button · submit · reset</td><td>button</td><td></td></tr>
+        <tr><td><code>full-width</code></td><td>boolean</td><td>—</td><td></td></tr>
+        <tr><td><code>aria-label</code></td><td>string</td><td>—</td><td>Forwarded to the internal &lt;button&gt;; use for icon-only buttons</td></tr>
+        <tr><td>slots</td><td colspan="3"><code>start</code>, default (label), <code>end</code></td></tr>
+        <tr><td>events</td><td colspan="3">native <code>click</code> (not dispatched while disabled/loading)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-input">
+    <h3 class="component-name">&lt;wms-input&gt;</h3>
+
+    <h4 class="demo-label">Basic</h4>
+    <div class="demo">
+      <wms-input label="Warehouse name" placeholder="e.g. DC-East"></wms-input>
+      <wms-input label="SKU count" type="number" hint="Total distinct SKUs on hand"></wms-input>
+    </div>
+
+    <h4 class="demo-label">Error state</h4>
+    <div class="demo">
+      <wms-input label="Bin location" value="A1-99-Z" error="Bin does not exist in this zone"></wms-input>
+    </div>
+
+    <h4 class="demo-label">Disabled &amp; sizes</h4>
+    <div class="demo">
+      <wms-input label="Locked field" value="READ-ONLY" disabled></wms-input>
+      <wms-input label="Small" size="sm" placeholder="sm"></wms-input>
+      <wms-input label="Large" size="lg" placeholder="lg"></wms-input>
+    </div>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>label</code></td><td>string</td><td>—</td><td>Renders a real &lt;label for&gt; bound to the input</td></tr>
+        <tr><td><code>type</code></td><td>text · email · password · number · search · tel · url</td><td>text</td><td></td></tr>
+        <tr><td><code>value</code></td><td>string</td><td>—</td><td>Also readable/writable as a property</td></tr>
+        <tr><td><code>placeholder</code></td><td>string</td><td>—</td><td></td></tr>
+        <tr><td><code>hint</code></td><td>string</td><td>—</td><td>Wired via <code>aria-describedby</code>; hidden when <code>error</code> is set</td></tr>
+        <tr><td><code>error</code></td><td>string</td><td>—</td><td>Sets <code>aria-invalid</code> + <code>aria-describedby</code>, announced via <code>role="alert"</code></td></tr>
+        <tr><td><code>disabled</code> / <code>readonly</code> / <code>required</code></td><td>boolean</td><td>—</td><td></td></tr>
+        <tr><td><code>size</code></td><td>sm · md · lg</td><td>md</td><td></td></tr>
+        <tr><td>slots</td><td colspan="3"><code>start</code>, <code>end</code> (icons/adornments)</td></tr>
+        <tr><td>events</td><td colspan="3">native <code>input</code> / <code>change</code> (both composed — read <code>event.target.value</code>)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-badge">
+    <h3 class="component-name">&lt;wms-badge&gt;</h3>
+
+    <h4 class="demo-label">Variants</h4>
+    <div class="demo">
+      <wms-badge variant="neutral">Neutral</wms-badge>
+      <wms-badge variant="primary">Primary</wms-badge>
+      <wms-badge variant="success">In stock</wms-badge>
+      <wms-badge variant="warning">Low stock</wms-badge>
+      <wms-badge variant="danger">Out of stock</wms-badge>
+      <wms-badge variant="info">Info</wms-badge>
+    </div>
+
+    <h4 class="demo-label">Dot indicator &amp; sizes</h4>
+    <div class="demo">
+      <wms-badge variant="success" dot>Active</wms-badge>
+      <wms-badge variant="danger" dot>Offline</wms-badge>
+      <wms-badge variant="primary" size="sm">Small</wms-badge>
+    </div>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>variant</code></td><td>neutral · primary · success · warning · danger · info</td><td>neutral</td><td></td></tr>
+        <tr><td><code>size</code></td><td>sm · md</td><td>md</td><td></td></tr>
+        <tr><td><code>dot</code></td><td>boolean</td><td>—</td><td>Leading status dot</td></tr>
+        <tr><td>slots</td><td colspan="3">default (label)</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-card">
+    <h3 class="component-name">&lt;wms-card&gt;</h3>
+
+    <h4 class="demo-label">Basic, with header &amp; footer</h4>
+    <div class="demo">
+      <wms-card style="width: 280px;">
+        <span slot="header">Inbound shipment #4821</span>
+        Arriving from Vendor 33 — 240 units across 3 SKUs.
+        <div slot="footer">
+          <wms-button size="sm" variant="outline">Details</wms-button>
+          <wms-button size="sm">Receive</wms-button>
+        </div>
+      </wms-card>
+    </div>
+
+    <h4 class="demo-label">Interactive (keyboard-activatable)</h4>
+    <div class="demo">
+      <wms-card style="width: 220px;" interactive tabindex="0" id="interactive-card-demo">
+        <span slot="header">Zone B-12</span>
+        412 bins · 98% capacity
+      </wms-card>
+    </div>
+
+    <h4 class="demo-label">Elevation levels</h4>
+    <div class="demo">
+      <wms-card style="width: 140px; padding: sm;" elevation="0">elevation=0</wms-card>
+      <wms-card style="width: 140px;" elevation="1">elevation=1</wms-card>
+      <wms-card style="width: 140px;" elevation="2">elevation=2</wms-card>
+      <wms-card style="width: 140px;" elevation="3">elevation=3</wms-card>
+    </div>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>padding</code></td><td>none · sm · md · lg</td><td>md</td><td>Controls body padding only</td></tr>
+        <tr><td><code>elevation</code></td><td>0 · 1 · 2 · 3</td><td>1</td><td></td></tr>
+        <tr><td><code>interactive</code></td><td>boolean</td><td>—</td><td>Adds <code>role="button"</code>, <code>tabindex</code>, hover/focus states, Enter/Space → click</td></tr>
+        <tr><td>slots</td><td colspan="3"><code>header</code>, default (body), <code>footer</code> — wrapper hides automatically when a slot is empty</td></tr>
+        <tr><td>events</td><td colspan="3">native <code>click</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-modal">
+    <h3 class="component-name">&lt;wms-modal&gt;</h3>
+    <p class="lede">Built on native <code class="inline">&lt;dialog&gt;</code> — focus trapping, Escape-to-close, and top-layer stacking come from the browser, not reimplemented JS.</p>
+
+    <div class="demo">
+      <wms-button id="open-modal-md">Open modal</wms-button>
+      <wms-button id="open-modal-sm" variant="outline">Open small modal (non-dismissible)</wms-button>
+    </div>
+
+    <wms-modal id="demo-modal">
+      <span slot="title">Confirm stock adjustment</span>
+      Adjusting SKU <code class="inline">WMS-2291</code> from 140 to 96 units. This will be logged
+      as a manual correction.
+      <div slot="footer">
+        <wms-button variant="outline" id="modal-cancel">Cancel</wms-button>
+        <wms-button variant="danger" id="modal-confirm">Confirm adjustment</wms-button>
+      </div>
+    </wms-modal>
+
+    <wms-modal id="demo-modal-sm" size="sm" dismissible="false">
+      <span slot="title">Processing…</span>
+      This step cannot be cancelled once started.
+      <div slot="footer">
+        <wms-button size="sm" id="modal-sm-close">Done</wms-button>
+      </div>
+    </wms-modal>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>open</code></td><td>boolean</td><td>—</td><td>Reflects visibility; toggling calls <code>showModal()</code>/<code>close()</code> internally</td></tr>
+        <tr><td><code>label</code></td><td>string</td><td>—</td><td>Fallback <code>aria-label</code> used only when no <code>title</code> slot content is present</td></tr>
+        <tr><td><code>size</code></td><td>sm · md · lg</td><td>md</td><td></td></tr>
+        <tr><td><code>dismissible</code></td><td>"false" to lock</td><td>true</td><td>Disables Escape and backdrop-click dismissal</td></tr>
+        <tr><td>methods</td><td colspan="3"><code>show()</code>, <code>close()</code></td></tr>
+        <tr><td>slots</td><td colspan="3"><code>title</code>, default (body), <code>footer</code> (actions)</td></tr>
+        <tr><td>events</td><td colspan="3"><code>wms-open</code>, <code>wms-close</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-toast">
+    <h3 class="component-name">&lt;wms-toast&gt;</h3>
+    <p class="lede">Instances are created and appended on demand; each one shows itself, auto-dismisses, and removes itself from the DOM.</p>
+
+    <div class="demo">
+      <wms-button size="sm" data-toast="neutral">Neutral</wms-button>
+      <wms-button size="sm" variant="secondary" data-toast="success">Success</wms-button>
+      <wms-button size="sm" variant="secondary" data-toast="warning">Warning</wms-button>
+      <wms-button size="sm" variant="danger" data-toast="danger">Danger</wms-button>
+      <wms-button size="sm" variant="outline" data-toast="info">Info (persistent)</wms-button>
+    </div>
+    <div id="toast-region" aria-live="polite" style="position: fixed; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: var(--z-toast);"></div>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>variant</code></td><td>neutral · success · warning · danger · info</td><td>neutral</td><td>Also selects <code>role="alert"</code> vs <code>role="status"</code></td></tr>
+        <tr><td><code>duration</code></td><td>milliseconds</td><td>4000</td><td><code>0</code> disables auto-dismiss; hover/focus pauses the timer</td></tr>
+        <tr><td>methods</td><td colspan="3"><code>dismiss()</code></td></tr>
+        <tr><td>slots</td><td colspan="3">default (message)</td></tr>
+        <tr><td>events</td><td colspan="3"><code>wms-close</code></td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ================================================================ -->
+  <section id="wms-skeleton">
+    <h3 class="component-name">&lt;wms-skeleton&gt;</h3>
+
+    <h4 class="demo-label">Text lines</h4>
+    <div class="demo column" style="max-width: 320px;">
+      <wms-skeleton variant="text" lines="3"></wms-skeleton>
+    </div>
+
+    <h4 class="demo-label">Avatar + rect placeholder</h4>
+    <div class="demo">
+      <wms-skeleton variant="circle" width="40px" height="40px"></wms-skeleton>
+      <wms-skeleton variant="rect" width="180px" height="96px"></wms-skeleton>
+    </div>
+
+    <table class="api">
+      <caption>API</caption>
+      <thead><tr><th>Attribute</th><th>Values</th><th>Default</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code>variant</code></td><td>text · circle · rect</td><td>text</td><td></td></tr>
+        <tr><td><code>width</code> / <code>height</code></td><td>any CSS length</td><td>100% / 1em</td><td></td></tr>
+        <tr><td><code>lines</code></td><td>number</td><td>1</td><td>Text variant only; last line renders shorter</td></tr>
+        <tr><td colspan="4">Always <code>aria-hidden</code> — pair with <code>aria-busy="true"</code> on the loading container</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+</main>
+
+<script type="module">
+  // ---- Foundations: render swatches / scales from the live token values ----
+  const styles = getComputedStyle(document.documentElement);
+  const tok = (name) => styles.getPropertyValue(name).trim();
+
+  function renderSwatches(containerId, names) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = names.map((name) => `
+      <div class="swatch">
+        <div class="chip" style="background:var(${name})"></div>
+        <div class="label">${name.replace('--', '')}</div>
+      </div>
+    `).join('');
+  }
+
+  renderSwatches('swatch-gray', ['--gray-50','--gray-100','--gray-200','--gray-300','--gray-400','--gray-500','--gray-600','--gray-700','--gray-800','--gray-900','--gray-950']);
+  renderSwatches('swatch-brand', ['--brand-50','--brand-100','--brand-200','--brand-300','--brand-400','--brand-500','--brand-600','--brand-700','--brand-800','--brand-900','--brand-950']);
+  renderSwatches('swatch-semantic', ['--success-500','--warning-500','--danger-500','--info-500']);
+
+  const spaceTokens = ['--space-1','--space-2','--space-3','--space-4','--space-6','--space-8','--space-12','--space-16','--space-24','--space-32'];
+  document.getElementById('space-scale').innerHTML = spaceTokens.map((name) => `
+    <div class="space-item">
+      <span class="name">${name.replace('--', '')}</span>
+      <span class="bar" style="width:var(${name})"></span>
+      <span class="name">${tok(name)}</span>
+    </div>
+  `).join('');
+
+  const typeTokens = ['--text-2xs','--text-xs','--text-sm','--text-base','--text-md','--text-lg','--text-xl','--text-2xl','--text-3xl','--text-4xl','--text-5xl'];
+  document.getElementById('type-scale').innerHTML = typeTokens.map((name) => `
+    <div class="type-row">
+      <span class="name">${name.replace('--', '')}</span>
+      <span style="font-size:var(${name})">Warehouse capacity at 82%</span>
+    </div>
+  `).join('');
+
+  const radiusTokens = ['--radius-none','--radius-xs','--radius-sm','--radius-md','--radius-lg','--radius-xl','--radius-2xl','--radius-full'];
+  document.getElementById('radius-scale').innerHTML = radiusTokens.map((name) => `
+    <div class="radius-item">
+      <div class="box" style="border-radius:var(${name})"></div>
+      <span class="name">${name.replace('--', '')}</span>
+    </div>
+  `).join('');
+
+  const shadowTokens = ['--shadow-xs','--shadow-sm','--shadow-md','--shadow-lg','--shadow-xl'];
+  document.getElementById('shadow-scale').innerHTML = shadowTokens.map((name) => `
+    <div class="shadow-item">
+      <div class="box" style="box-shadow:var(${name})"></div>
+      <span class="name">${name.replace('--', '')}</span>
+    </div>
+  `).join('');
+
+  // ---- wms-card interactive demo ----
+  document.getElementById('interactive-card-demo').addEventListener('click', () => {
+    spawnToast('info', 'Zone B-12 card activated (click or Enter/Space).');
+  });
+
+  // ---- wms-modal demo wiring ----
+  const demoModal = document.getElementById('demo-modal');
+  document.getElementById('open-modal-md').addEventListener('click', () => demoModal.show());
+  document.getElementById('modal-cancel').addEventListener('click', () => demoModal.close());
+  document.getElementById('modal-confirm').addEventListener('click', () => {
+    demoModal.close();
+    spawnToast('success', 'Stock adjustment confirmed for WMS-2291.');
+  });
+
+  const demoModalSm = document.getElementById('demo-modal-sm');
+  document.getElementById('open-modal-sm').addEventListener('click', () => demoModalSm.show());
+  document.getElementById('modal-sm-close').addEventListener('click', () => demoModalSm.close());
+
+  // ---- wms-toast demo wiring ----
+  const toastMessages = {
+    neutral: 'Saved as draft.',
+    success: 'Shipment marked as received.',
+    warning: 'Bin A1-12 is nearing capacity.',
+    danger: 'Failed to reserve inventory for order #5521.',
+    info: 'Sync in progress — this one stays until dismissed.',
+  };
+
+  function spawnToast(variant, message) {
+    const toast = document.createElement('wms-toast');
+    toast.setAttribute('variant', variant);
+    if (variant === 'info') toast.setAttribute('duration', '0');
+    toast.textContent = message;
+    document.getElementById('toast-region').appendChild(toast);
+  }
+
+  document.querySelectorAll('[data-toast]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const variant = btn.dataset.toast;
+      spawnToast(variant, toastMessages[variant]);
+    });
+  });
+
+  // ---- Theme Toggle ----
+  const themeToggle = document.getElementById('theme-toggle');
+  themeToggle.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    themeToggle.textContent = next === 'dark' ? '☀️ Toggle Light Theme' : '🌙 Toggle Dark Theme';
+  });
+</script>
+
+</body>
+</html>

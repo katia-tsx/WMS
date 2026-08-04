@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Data Display Components — Interactive Preview</title>
+<link rel="stylesheet" href="../design-system/tokens.css" />
+<script type="module" src="../design-system/index.js"></script>
+<script type="module" src="./wms-data-table.js"></script>
+<script type="module" src="./wms-filter-bar.js"></script>
+<script type="module" src="./wms-kanban-board.js"></script>
+<script type="module" src="./wms-timeline.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: var(--space-6);
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+  header {
+    margin-bottom: var(--space-8);
+    border-bottom: 1px solid var(--color-border-default);
+    padding-bottom: var(--space-4);
+  }
+  h1 { font-size: var(--text-3xl); margin: 0 0 var(--space-2); }
+  p.lede { color: var(--color-text-secondary); margin: 0; }
+  section { margin-bottom: var(--space-12); }
+  h2 { font-size: var(--text-xl); border-bottom: 1px solid var(--color-border-subtle); padding-bottom: var(--space-2); margin-bottom: var(--space-4); }
+  .controls-row { display: flex; gap: var(--space-3); margin-bottom: var(--space-4); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>WMS Reusable Data Display Components</h1>
+  <p class="lede">Advanced Web Components for large dataset rendering, Specification filtering, Kanban pipelines, and timeline tracking.</p>
+</header>
+
+<main>
+
+  <!-- Filter Bar & Data Table -->
+  <section>
+    <h2>1. Filter Bar & Virtualized Data Table</h2>
+    
+    <wms-filter-bar id="filter-bar-demo">
+      <wms-input id="search-input" size="sm" placeholder="Filter by SKU or Name..."></wms-input>
+    </wms-filter-bar>
+
+    <div class="controls-row">
+      <wms-button size="sm" id="toggle-loading">Toggle Loading State</wms-button>
+      <wms-button size="sm" variant="outline" id="toggle-empty">Toggle Empty State</wms-button>
+      <wms-button size="sm" variant="danger" id="toggle-error">Toggle Error State</wms-button>
+    </div>
+
+    <wms-data-table id="data-table-demo" page="1" page-size="5" total-items="100"></wms-data-table>
+  </section>
+
+  <!-- Kanban Board -->
+  <section>
+    <h2>2. Order Pipeline Kanban Board (Native HTML5 Drag & Drop)</h2>
+    <wms-kanban-board id="kanban-demo"></wms-kanban-board>
+  </section>
+
+  <!-- Timeline -->
+  <section>
+    <h2>3. Shipment Tracking History Timeline (ARIA Live Region)</h2>
+    <wms-timeline id="timeline-demo"></wms-timeline>
+  </section>
+
+</main>
+
+<script type="module">
+  import { InventoryStore } from '../core/stores/InventoryStore.js';
+  import { OrderStore } from '../core/stores/OrderStore.js';
+  import { ShipmentStore } from '../core/stores/ShipmentStore.js';
+
+  // 1. Data Table Setup with Mock 1,000 Large Dataset (Testing Virtualization)
+  const table = document.getElementById('data-table-demo');
+  table.columns = [
+    { key: 'sku', label: 'SKU' },
+    { key: 'name', label: 'Item Description' },
+    { key: 'category', label: 'Category' },
+    { key: 'quantity', label: 'Qty on Hand' },
+    { key: 'bin', label: 'Bin Location' },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (val) => {
+        const variant = val === 'IN_STOCK' ? 'success' : val === 'LOW_STOCK' ? 'warning' : 'danger';
+        return `<wms-badge variant="${variant}" size="sm" dot>${val.replace('_', ' ')}</wms-badge>`;
+      }
+    }
+  ];
+
+  // Generate 100 virtual rows for smooth testing
+  const mockDataset = Array.from({ length: 100 }, (_, i) => ({
+    sku: `WMS-${1000 + i}`,
+    name: `Warehouse SKU Unit #${i + 1}`,
+    category: i % 3 === 0 ? 'Packaging' : i % 2 === 0 ? 'Supplies' : 'Hardware',
+    quantity: (i * 17) % 250,
+    bin: `A${(i % 5) + 1}-0${(i % 9) + 1}-C`,
+    status: (i * 17) % 250 === 0 ? 'OUT_OF_STOCK' : (i * 17) % 250 < 30 ? 'LOW_STOCK' : 'IN_STOCK'
+  }));
+
+  table.data = mockDataset;
+
+  // Filter Bar wiring
+  const filterBar = document.getElementById('filter-bar-demo');
+  const searchInput = document.getElementById('search-input');
+
+  searchInput.addEventListener('input', (e) => {
+    filterBar.setFilter('search', e.target.value, `Search: "${e.target.value}"`);
+  });
+
+  filterBar.addEventListener('wms-filter-changed', (e) => {
+    const searchVal = e.detail.filters.search?.value.toLowerCase() || '';
+    if (!searchVal) {
+      table.data = mockDataset;
+    } else {
+      table.data = mockDataset.filter(item => item.sku.toLowerCase().includes(searchVal) || item.name.toLowerCase().includes(searchVal));
+    }
+  });
+
+  // State Toggles
+  document.getElementById('toggle-loading').addEventListener('click', () => {
+    table.toggleAttribute('loading');
+  });
+  document.getElementById('toggle-empty').addEventListener('click', () => {
+    table.data = table.data.length === 0 ? mockDataset : [];
+  });
+  document.getElementById('toggle-error').addEventListener('click', () => {
+    if (table.hasAttribute('error')) table.removeAttribute('error');
+    else table.setAttribute('error', '503 Service Unavailable — Gateway Timeout');
+  });
+
+  // 2. Kanban Board Setup
+  const kanban = document.getElementById('kanban-demo');
+  kanban.columns = OrderStore.getState().columns;
+  kanban.cards = OrderStore.getState().cards || OrderStore.getState().orders;
+
+  kanban.addEventListener('wms-card-moved', (e) => {
+    console.log('Card Moved:', e.detail);
+  });
+
+  // 3. Timeline Setup
+  const timeline = document.getElementById('timeline-demo');
+  timeline.events = ShipmentStore.getState().activeShipment.events;
+</script>
+
+</body>
+</html>

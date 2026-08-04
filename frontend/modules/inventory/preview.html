@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Inventory Module — Interactive Preview</title>
+<link rel="stylesheet" href="../../design-system/tokens.css" />
+<script type="module" src="../../design-system/index.js"></script>
+<script type="module" src="../../components/wms-data-table.js"></script>
+<script type="module" src="../../components/wms-filter-bar.js"></script>
+<script type="module" src="../../components/wms-location-map.js"></script>
+<script type="module" src="../../components/wms-timeline.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: var(--space-6);
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+  .preview-section { margin-bottom: var(--space-12); }
+  .view-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border-default); padding-bottom: 12px; margin-bottom: 24px; }
+  h2 { margin: 0; font-size: var(--text-xl); }
+</style>
+</head>
+<body>
+
+<div class="view-header">
+  <h2>WMS Inventory Module &amp; Annual Audit Workflow</h2>
+  <div style="display: flex; gap: 8px;">
+    <wms-button id="btn-show-inventory" size="sm">Main Stock View</wms-button>
+    <wms-button id="btn-show-detail" size="sm" variant="outline">Product Detail Tabs</wms-button>
+    <wms-button id="btn-scan-barcode" size="sm" variant="secondary">📷 Scan Barcode</wms-button>
+  </div>
+</div>
+
+<main id="app-root"></main>
+
+<script type="module">
+  import { InventoryView } from './InventoryView.js';
+  import { ProductDetailView } from './ProductDetailView.js';
+  import { BarcodeScanner } from '../../utils/BarcodeScanner.js';
+
+  const root = document.getElementById('app-root');
+
+  const inventoryView = new InventoryView(root);
+  const detailView = new ProductDetailView(root);
+
+  // Mount main inventory view by default
+  inventoryView.mount();
+
+  document.getElementById('btn-show-inventory').addEventListener('click', () => {
+    detailView.container = null;
+    inventoryView.mount();
+  });
+
+  document.getElementById('btn-show-detail').addEventListener('click', () => {
+    inventoryView.unmount();
+    detailView.container = root;
+    detailView.mount();
+  });
+
+  const scanner = new BarcodeScanner(null, (barcode) => {
+    alert(`Barcode Scanned: [${barcode}] — Product WMS-1001 located in Bin A1-02-C.`);
+  });
+
+  document.getElementById('btn-scan-barcode').addEventListener('click', () => {
+    scanner.simulateScan('WMS-1001');
+  });
+</script>
+
+</body>
+</html>

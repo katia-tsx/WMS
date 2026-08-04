@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Application Shell — Preview</title>
+<link rel="stylesheet" href="../design-system/tokens.css" />
+<link rel="stylesheet" href="./AppShell.css" />
+<script type="module" src="./AppShell.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; background: var(--color-bg-canvas); }
+
+  /* Demo Control Bar */
+  .demo-toolbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 44px;
+    background: var(--gray-900);
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 var(--space-4);
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    z-index: var(--z-tooltip);
+    border-bottom: 1px solid var(--gray-800);
+  }
+
+  .demo-controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .demo-controls select, .demo-controls button {
+    font-family: inherit;
+    font-size: inherit;
+    background: var(--gray-800);
+    color: #ffffff;
+    border: 1px solid var(--gray-700);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    cursor: pointer;
+  }
+  .demo-controls button:hover { background: var(--gray-700); }
+
+  .preview-wrapper {
+    margin-top: 44px;
+    min-height: calc(100vh - 44px);
+  }
+
+  .dashboard-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+  }
+
+  .stat-label { font-size: var(--text-xs); color: var(--color-text-secondary); }
+  .stat-val { font-size: var(--text-2xl); font-weight: var(--font-weight-bold); margin-top: 4px; }
+
+  .content-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-6);
+  }
+  .content-title { font-size: var(--text-2xl); font-weight: var(--font-weight-semibold); margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="demo-toolbar">
+  <div><strong>WMS Shell Preview</strong></div>
+  <div class="demo-controls">
+    <label>
+      Role:
+      <select id="role-select">
+        <option value="admin">Admin (All Perms)</option>
+        <option value="manager" selected>Manager (Standard Ops)</option>
+        <option value="clerk">Clerk (Core Only)</option>
+        <option value="viewer">Viewer (Read Only)</option>
+      </select>
+    </label>
+
+    <button id="toggle-skeleton-btn">Toggle Skeleton</button>
+    <button id="toggle-rail-btn">Toggle Rail</button>
+    <button id="toggle-theme-btn">🌙 Dark Theme</button>
+  </div>
+</div>
+
+<div class="preview-wrapper">
+  <wms-app-shell id="app-shell-demo" current-route="#/dashboard">
+    
+    <div class="content-header">
+      <div>
+        <h1 class="content-title">Warehouse Overview</h1>
+        <p style="margin: 4px 0 0; color: var(--color-text-secondary); font-size: var(--text-sm);">
+          Real-time metrics for <strong id="active-wh-label">DC-East (Main)</strong>
+        </p>
+      </div>
+      <div>
+        <wms-button size="sm">Download Report</wms-button>
+        <wms-button size="sm" variant="outline">+ New Inbound Batch</wms-button>
+      </div>
+    </div>
+
+    <!-- Dashboard Stat Cards -->
+    <div class="dashboard-card-grid">
+      <wms-card>
+        <div class="stat-label">Active SKUs</div>
+        <div class="stat-val">14,820</div>
+        <wms-badge variant="success" size="sm" style="margin-top: 8px;">+3.2% this week</wms-badge>
+      </wms-card>
+
+      <wms-card>
+        <div class="stat-label">Pending Inbound Batches</div>
+        <div class="stat-val">8</div>
+        <wms-badge variant="warning" size="sm" style="margin-top: 8px;">2 arriving today</wms-badge>
+      </wms-card>
+
+      <wms-card>
+        <div class="stat-label">Outbound Orders</div>
+        <div class="stat-val">342</div>
+        <wms-badge variant="primary" size="sm" style="margin-top: 8px;">94% pick rate</wms-badge>
+      </wms-card>
+
+      <wms-card>
+        <div class="stat-label">Bin Utilization</div>
+        <div class="stat-val">88.4%</div>
+        <wms-badge variant="info" size="sm" style="margin-top: 8px;">Zone B near capacity</wms-badge>
+      </wms-card>
+    </div>
+
+    <!-- Recent Activity Table Card -->
+    <wms-card>
+      <span slot="header">Recent Stock Adjustments</span>
+      <table style="width: 100%; border-collapse: collapse; font-size: var(--text-sm);">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--color-border-default); text-align: left; color: var(--color-text-tertiary);">
+            <th style="padding: 8px;">SKU</th>
+            <th style="padding: 8px;">Bin Location</th>
+            <th style="padding: 8px;">Adjustment</th>
+            <th style="padding: 8px;">User</th>
+            <th style="padding: 8px;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid var(--color-border-subtle);">
+            <td style="padding: 8px; font-family: var(--font-mono);">WMS-9012</td>
+            <td style="padding: 8px;">A1-04-B</td>
+            <td style="padding: 8px; color: var(--color-success); font-weight: 600;">+24</td>
+            <td style="padding: 8px;">Katia Vance</td>
+            <td style="padding: 8px;"><wms-badge variant="success" size="sm">Verified</wms-badge></td>
+          </tr>
+          <tr style="border-bottom: 1px solid var(--color-border-subtle);">
+            <td style="padding: 8px; font-family: var(--font-mono);">WMS-4411</td>
+            <td style="padding: 8px;">B2-12-A</td>
+            <td style="padding: 8px; color: var(--color-danger); font-weight: 600;">-5</td>
+            <td style="padding: 8px;">Marcus Brody</td>
+            <td style="padding: 8px;"><wms-badge variant="warning" size="sm">Pending Audit</wms-badge></td>
+          </tr>
+        </tbody>
+      </table>
+    </wms-card>
+
+  </wms-app-shell>
+</div>
+
+<script type="module">
+  import { AuthContext } from '../auth/AuthContext.js';
+
+  const shell = document.getElementById('app-shell-demo');
+  const roleSelect = document.getElementById('role-select');
+  const toggleSkeletonBtn = document.getElementById('toggle-skeleton-btn');
+  const toggleRailBtn = document.getElementById('toggle-rail-btn');
+  const toggleThemeBtn = document.getElementById('toggle-theme-btn');
+
+  // Role Switcher Listener
+  roleSelect.addEventListener('change', (e) => {
+    AuthContext.setRole(e.target.value);
+  });
+
+  // Skeleton Toggle
+  toggleSkeletonBtn.addEventListener('click', () => {
+    shell.loading = !shell.loading;
+  });
+
+  // Rail Toggle
+  toggleRailBtn.addEventListener('click', () => {
+    shell.collapsed = !shell.collapsed;
+  });
+
+  // Theme Toggle
+  toggleThemeBtn.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme');
+    const next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    toggleThemeBtn.textContent = next === 'dark' ? '☀️ Light Theme' : '🌙 Dark Theme';
+  });
+
+  // Active Warehouse Subscription
+  AuthContext.subscribe((state) => {
+    document.getElementById('active-wh-label').textContent = state.activeWarehouse.name;
+  });
+</script>
+
+</body>
+</html>

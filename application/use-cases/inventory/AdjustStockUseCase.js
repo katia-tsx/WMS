@@ -36,18 +36,28 @@ class AdjustStockUseCase extends UseCase {
    * @param {InventoryRepositoryPort} deps.inventoryRepository
    * @param {IValidator} [deps.validator]
    */
-  constructor({ inventoryRepository, validator }) {
+  constructor({ inventoryRepository, validator, freezeGuard }) {
     super({ validator });
     this.inventoryRepository = inventoryRepository;
+    this.freezeGuard = freezeGuard;
   }
 
   /**
    * @param {Object} input
    * @param {string} input.sku
    * @param {number} input.amount
+   * @param {string} [input.warehouseId]
    * @returns {Promise<import('../../../domain/shared-kernel/result/Result').Result>}
    */
-  async handle({ sku, amount }) {
+  async handle({ sku, amount, warehouseId }) {
+    if (this.freezeGuard && warehouseId) {
+      try {
+        await this.freezeGuard.assertNotFrozen(warehouseId);
+      } catch (err) {
+        return Result.err(new BusinessRuleViolationError(err.message));
+      }
+    }
+
     const product = await this.inventoryRepository.findBySku(sku);
     if (!product) {
       return Result.err(new NotFoundError(`No product found for sku "${sku}".`));
