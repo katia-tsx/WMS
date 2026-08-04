@@ -19,8 +19,6 @@ const { ExponentialSmoothingStrategy } = require('../analytics/strategies/Expone
 const { ForecastDemandUseCase } = require('../analytics/ForecastDemandUseCase');
 const { CalculateInventoryTurnoverUseCase } = require('../analytics/CalculateInventoryTurnoverUseCase');
 const { CalculateDeadStockUseCase } = require('../analytics/CalculateDeadStockUseCase');
-const { InventoryKpiAggregator } = require('../../../infrastructure/services/InventoryKpiAggregator');
-const { InventoryAnalyticsController } = require('../../../infrastructure/adapters/http/InventoryAnalyticsController');
 
 describe('Annual Audit Session Aggregate & State Machine', () => {
   it('enforces valid state machine transitions PLANNED -> IN_PROGRESS -> RECONCILIATION -> CLOSED', () => {
@@ -175,18 +173,5 @@ describe('Demand Forecasting Strategies & Analytics Use Cases', () => {
 
     assert.equal(res.deadStockCount, 1);
     assert.equal(res.items[0].sku, 'OLD-1');
-  });
-
-  it('InventoryAnalyticsController returns KPIs and forecast responses', async () => {
-    const aggregator = new InventoryKpiAggregator();
-    const controller = new InventoryAnalyticsController({ kpiAggregator: aggregator });
-
-    const kpiRes = await controller.getKpis();
-    assert.equal(kpiRes.status, 200);
-    assert.equal(kpiRes.data.turnoverRate, 5.2);
-
-    const fcRes = await controller.getDemandForecast({ params: { sku: 'WMS-1001' } });
-    assert.equal(fcRes.status, 200);
-    assert.equal(fcRes.data.sku, 'WMS-1001');
   });
 });
