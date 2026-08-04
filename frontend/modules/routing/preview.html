@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Vehicle Routing (VRP) — Interactive Preview</title>
+<link rel="stylesheet" href="../../design-system/tokens.css" />
+<script type="module" src="../../design-system/index.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: var(--space-6);
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+  .view-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border-default); padding-bottom: 12px; margin-bottom: 24px; }
+  h2 { margin: 0; font-size: var(--text-xl); }
+</style>
+</head>
+<body>
+
+<div class="view-header">
+  <h2>WMS Vehicle Routing (VRP) &amp; Dispatcher Module</h2>
+  <wms-button id="btn-show-route" size="sm">VRP Route Optimization</wms-button>
+</div>
+
+<main id="app-root"></main>
+
+<script type="module">
+  import { RoutePlanningView } from './RoutePlanningView.js';
+
+  const root = document.getElementById('app-root');
+  const routeView = new RoutePlanningView(root);
+  routeView.mount();
+</script>
+
+</body>
+</html>
