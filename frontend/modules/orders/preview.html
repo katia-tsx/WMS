@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Orders Module — Interactive Preview</title>
+<link rel="stylesheet" href="../../design-system/tokens.css" />
+<script type="module" src="../../design-system/index.js"></script>
+<script type="module" src="../../components/wms-kanban-board.js"></script>
+<script type="module" src="../../components/wms-timeline.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: var(--space-6);
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+  .view-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border-default); padding-bottom: 12px; margin-bottom: 24px; }
+  h2 { margin: 0; font-size: var(--text-xl); }
+</style>
+</head>
+<body>
+
+<div class="view-header">
+  <h2>WMS Orders Module &amp; Wave Planning Workflow</h2>
+  <div style="display: flex; gap: 8px;">
+    <wms-button id="btn-show-kanban" size="sm">Kanban Pipeline</wms-button>
+    <wms-button id="btn-show-detail" size="sm" variant="outline">Order Detail View</wms-button>
+    <wms-button id="btn-show-wave" size="sm" variant="secondary">Wave Planning Screen</wms-button>
+  </div>
+</div>
+
+<main id="app-root"></main>
+
+<script type="module">
+  import { OrdersKanbanView } from './OrdersKanbanView.js';
+  import { OrderDetailView } from './OrderDetailView.js';
+  import { WavePlanningView } from './WavePlanningView.js';
+
+  const root = document.getElementById('app-root');
+
+  const kanbanView = new OrdersKanbanView(root);
+  const detailView = new OrderDetailView(root);
+  const waveView = new WavePlanningView(root);
+
+  // Default mount
+  kanbanView.mount();
+
+  document.getElementById('btn-show-kanban').addEventListener('click', () => {
+    detailView.container = null;
+    waveView.container = null;
+    kanbanView.mount();
+  });
+
+  document.getElementById('btn-show-detail').addEventListener('click', () => {
+    kanbanView.unmount();
+    waveView.container = null;
+    detailView.container = root;
+    detailView.mount();
+  });
+
+  document.getElementById('btn-show-wave').addEventListener('click', () => {
+    kanbanView.unmount();
+    detailView.container = null;
+    waveView.container = root;
+    waveView.mount();
+  });
+</script>
+
+</body>
+</html>
