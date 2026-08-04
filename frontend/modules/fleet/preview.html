@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>WMS Live Fleet Tracking &amp; Simulation — Interactive Preview</title>
+<title>WMS Fleet Management &amp; Tracking — Interactive Preview</title>
 <link rel="stylesheet" href="../../design-system/tokens.css" />
 <script type="module" src="../../design-system/index.js"></script>
 <style>
@@ -22,18 +22,37 @@
 <body>
 
 <div class="view-header">
-  <h2>WMS Live Fleet Tracking &amp; Replay Module</h2>
-  <wms-button id="btn-show-fleet" size="sm">Live Fleet Map</wms-button>
+  <h2>WMS Fleet Management &amp; Live Tracking Module</h2>
+  <div style="display: flex; gap: 8px;">
+    <wms-button id="btn-show-fleet-map" size="sm">Live Fleet Map</wms-button>
+    <wms-button id="btn-show-roster" size="sm" variant="outline">Vehicle &amp; Driver Roster</wms-button>
+  </div>
 </div>
 
 <main id="app-root"></main>
 
 <script type="module">
   import { LiveFleetDashboardView } from './LiveFleetDashboardView.js';
+  import { VehicleRosterView } from './VehicleRosterView.js';
 
   const root = document.getElementById('app-root');
-  const fleetView = new LiveFleetDashboardView(root);
-  fleetView.mount();
+
+  const fleetMap = new LiveFleetDashboardView(root);
+  const rosterView = new VehicleRosterView(root);
+
+  fleetMap.mount();
+
+  document.getElementById('btn-show-fleet-map').addEventListener('click', () => {
+    rosterView.container = null;
+    fleetMap.container = root;
+    fleetMap.mount();
+  });
+
+  document.getElementById('btn-show-roster').addEventListener('click', () => {
+    fleetMap.container = null;
+    rosterView.container = root;
+    rosterView.mount();
+  });
 </script>
 
 </body>
