@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WMS Hands-Free Voice AI &amp; Notifications — Interactive Preview</title>
+<link rel="stylesheet" href="../../design-system/tokens.css" />
+<script type="module" src="../../design-system/index.js"></script>
+<script type="module" src="../../components/wms-notification-center.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: var(--space-6);
+    background: var(--color-bg-canvas);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+  }
+  .view-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--color-border-default); padding-bottom: 12px; margin-bottom: 24px; }
+  h2 { margin: 0; font-size: var(--text-xl); }
+</style>
+</head>
+<body>
+
+<div class="view-header">
+  <h2>WMS Hands-Free Voice AI &amp; Notifications Module</h2>
+  <wms-button id="btn-show-voice" size="sm">Hands-Free Voice AI</wms-button>
+</div>
+
+<main id="app-root"></main>
+
+<script type="module">
+  import { VoiceHandsFreeView } from './VoiceHandsFreeView.js';
+
+  const root = document.getElementById('app-root');
+  const voiceView = new VoiceHandsFreeView(root);
+  voiceView.mount();
+</script>
+
+</body>
+</html>
